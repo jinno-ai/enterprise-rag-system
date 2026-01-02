@@ -13,3 +13,8 @@ __pycache__/
 # Data
 data/
 *.index
+
+# BMAD Method
+_bmad-output/
+_bmad/
+.claude/commands/bmad/
