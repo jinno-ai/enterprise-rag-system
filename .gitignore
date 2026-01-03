@@ -18,3 +18,7 @@ data/
 _bmad-output/
 _bmad/
 .claude/commands/bmad/
+
+# UCG Temp
+.ucg-temp/
+.ucg_hang_detection.json
