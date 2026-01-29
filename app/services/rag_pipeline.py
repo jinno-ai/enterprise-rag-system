@@ -27,6 +27,8 @@ class RAGResponse:
     retrieval_results: List[RetrievalResult]
 
 
+import jinja2
+
 class RAGPipeline:
     """Complete RAG pipeline orchestration"""
     
@@ -45,28 +47,18 @@ class RAGPipeline:
         
         # Set OpenAI API key
         openai.api_key = settings.openai_api_key
-    
+
+        # Load prompt template
+        try:
+            with open(settings.prompt_template_path, "r") as f:
+                self.prompt_template_str = f.read()
+            self.prompt_template = jinja2.Template(self.prompt_template_str)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load prompt template: {e}")
+
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
-        prompt = f"""You are a helpful AI assistant that answers questions based on the provided context.
-
-Context information is below:
----
-{context}
----
-
-Instructions:
-- Answer the question using ONLY the information provided in the context above
-- If the context doesn't contain enough information to answer the question, say so clearly
-- Cite your sources by mentioning the source number [Source X]
-- Be concise but comprehensive
-- If you're uncertain, acknowledge it
-
-Question: {query}
-
-Answer:"""
-        
-        return prompt
+        return self.prompt_template.render(context=context, query=query)
     
     def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """Call LLM with the prompt"""
