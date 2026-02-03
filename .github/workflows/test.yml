@@ -16,7 +16,7 @@ jobs:
           python-version: "3.10"
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r requirements.txt --use-deprecated=legacy-resolver
           pip install pytest pytest-cov
       - name: Run tests
         run: pytest tests/ -v --cov=app
