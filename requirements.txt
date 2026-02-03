@@ -5,7 +5,7 @@ pydantic-settings==2.1.0
 
 # LLM & AI Frameworks
 langchain==0.1.20
-langchain-community==0.1.20
+langchain-community==0.0.38
 langchain-openai==0.0.5
 langchain-anthropic==0.1.0
 langchain-google-genai==0.0.6
