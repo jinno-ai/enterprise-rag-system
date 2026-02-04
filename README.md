@@ -146,7 +146,7 @@ graph TB
 | **Orchestration** | LangChain, LangGraph | Pipeline management |
 | **API** | FastAPI, Pydantic | RESTful interface |
 | **UI** | Streamlit | Interactive demo |
-| **Monitoring** | LangSmith, Arize Phoenix | Observability |
+| **Monitoring** | LangSmith | Observability |
 
 ---
 
@@ -355,7 +355,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [LangChain](https://github.com/langchain-ai/langchain) for RAG orchestration
 - [Pinecone](https://www.pinecone.io/) for vector database
-- [Arize AI](https://arize.com/) for observability
 - The open-source AI community
 
 ---

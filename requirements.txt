@@ -49,7 +49,6 @@ asyncio==3.4.3
 
 # Monitoring & Observability
 langsmith==0.0.87
-# arize-phoenix==2.0.0 # Temporarily disabled due to Python 3.12 compatibility issues. The package is not currently used in the codebase.
 prometheus-client==0.19.0
 
 # Testing

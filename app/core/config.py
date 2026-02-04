@@ -50,7 +50,6 @@ class Settings(BaseSettings):
     # Monitoring
     langsmith_api_key: Optional[str] = Field(None, env="LANGSMITH_API_KEY")
     langsmith_project: str = Field("enterprise-rag", env="LANGSMITH_PROJECT")
-    arize_api_key: Optional[str] = Field(None, env="ARIZE_API_KEY")
     
     # Application
     app_name: str = "Enterprise RAG System"
