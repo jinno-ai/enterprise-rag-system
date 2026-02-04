@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     pinecone_api_key: Optional[str] = Field(None, env="PINECONE_API_KEY")
     pinecone_environment: str = Field("us-west1-gcp", env="PINECONE_ENVIRONMENT")
     pinecone_index_name: str = Field("enterprise-rag", env="PINECONE_INDEX_NAME")
+    vector_db_type: str = Field("faiss", env="VECTOR_DB_TYPE")
+    vector_db_path: str = Field("./data/faiss_index.bin", env="VECTOR_DB_PATH")
     
     # Embedding Configuration
     embedding_model: str = Field("text-embedding-ada-002", env="EMBEDDING_MODEL")
@@ -48,7 +50,6 @@ class Settings(BaseSettings):
     # Monitoring
     langsmith_api_key: Optional[str] = Field(None, env="LANGSMITH_API_KEY")
     langsmith_project: str = Field("enterprise-rag", env="LANGSMITH_PROJECT")
-    arize_api_key: Optional[str] = Field(None, env="ARIZE_API_KEY")
     
     # Application
     app_name: str = "Enterprise RAG System"
