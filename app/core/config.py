@@ -39,10 +39,6 @@ class Settings(BaseSettings):
     llm_model: str = Field("gpt-4-turbo-preview", env="LLM_MODEL")
     llm_temperature: float = Field(0.7, env="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(2048, env="LLM_MAX_TOKENS")
-    prompt_template_path: str = Field(
-        "app/prompts/default_prompt.txt",
-        env="PROMPT_TEMPLATE_PATH"
-    )
     
     # Performance
     enable_caching: bool = Field(True, env="ENABLE_CACHING")
