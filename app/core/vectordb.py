@@ -7,8 +7,15 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+import os
+import pickle
 import numpy as np
 from dataclasses import dataclass
+
+try:
+    import faiss
+except ImportError:
+    faiss = None
 
 
 @dataclass
@@ -77,15 +84,16 @@ class PineconeVectorDB(VectorDB):
     def connect(self) -> None:
         """Connect to Pinecone"""
         try:
-            import pinecone
+            from pinecone import Pinecone
             
-            pinecone.init(api_key=self.api_key, environment=self.environment)
+            pc = Pinecone(api_key=self.api_key)
             
             # Check if index exists
-            if self.index_name not in pinecone.list_indexes():
+            active_indexes = [index.name for index in pc.list_indexes()]
+            if self.index_name not in active_indexes:
                 raise ValueError(f"Index '{self.index_name}' does not exist")
             
-            self.index = pinecone.Index(self.index_name)
+            self.index = pc.Index(self.index_name)
             print(f"✅ Connected to Pinecone index: {self.index_name}")
             
         except ImportError:
@@ -199,13 +207,24 @@ class FAISSVectorDB(VectorDB):
         self.idx_to_id: Dict[int, str] = {}
     
     def connect(self) -> None:
-        """Load FAISS index from disk"""
+        """Load FAISS index and metadata from disk"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         try:
-            import faiss
-            
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
-                print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata if exists
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded FAISS index and metadata from: {self.index_path}")
+                else:
+                    print(f"✅ Loaded FAISS index from: {self.index_path} (no metadata found)")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -214,9 +233,9 @@ class FAISSVectorDB(VectorDB):
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         try:
-            import faiss
-            
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
             elif metric == "euclidean":
@@ -238,6 +257,8 @@ class FAISSVectorDB(VectorDB):
         """Insert or update vectors in FAISS"""
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         
         import numpy as np
         
@@ -267,9 +288,10 @@ class FAISSVectorDB(VectorDB):
         """Search for similar vectors in FAISS"""
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         
         import numpy as np
-        import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -311,8 +333,9 @@ class FAISSVectorDB(VectorDB):
         """Save FAISS index to disk"""
         if self.index is None:
             raise RuntimeError("No index to save")
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         
-        import faiss
         import pickle
         
         faiss.write_index(self.index, path)
