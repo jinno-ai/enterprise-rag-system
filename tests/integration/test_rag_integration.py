@@ -177,6 +177,7 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    from app.services.retrieval import HybridRetriever
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -233,6 +234,7 @@ def test_confidence_calculation():
     vector_db.connect()
     embedding_model = get_embedding_model()
 
+    from app.services.retrieval import HybridRetriever
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 

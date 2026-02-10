@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
 from dataclasses import dataclass
 
 
@@ -62,6 +63,29 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Convenience method to add documents by generating IDs"""
+        import hashlib
+
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        ids = []
+        for doc, meta in zip(documents, metadatas):
+            content_hash = hashlib.md5(doc.encode()).hexdigest()
+            source = meta.get('source', 'unknown')
+            ids.append(f"{source}_{content_hash[:16]}")
+            # Ensure text is in metadata
+            meta["text"] = doc
+
+        self.upsert(embeddings, ids, metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
