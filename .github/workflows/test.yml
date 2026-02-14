@@ -19,6 +19,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
       - name: Run tests
-        run: pytest tests/ -v --cov=app -m "integration or not integration"
+        run: pytest tests/ -v --cov=app
         env:
           OPENAI_API_KEY: "dummy"
