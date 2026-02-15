@@ -7,6 +7,7 @@ pydantic-settings==2.1.0
 langchain==0.1.0
 langchain-community==0.0.10
 langchain-openai==0.0.5
+langchain-core==0.1.16
 langchain-anthropic==0.0.1
 langchain-google-genai==0.0.6
 openai==1.10.0
@@ -15,8 +16,8 @@ cohere==4.40
 
 # Vector Databases
 pinecone-client==3.0.0
-weaviate-client==3.26.0
-faiss-cpu==1.7.4
+weaviate-client>=3.26.0
+faiss-cpu>=1.7.4
 chromadb==0.4.22
 
 # Document Processing
@@ -25,7 +26,7 @@ pypdf==4.0.1
 python-docx==1.1.0
 markdown==3.5.1
 beautifulsoup4==4.12.2
-pandoc==2.3
+pandoc>=2.3
 
 # Embeddings & Search
 sentence-transformers==2.2.2
@@ -45,11 +46,10 @@ pandas==2.1.4
 # Caching & Performance
 redis==5.0.1
 httpx==0.26.0
-asyncio==3.4.3
 
 # Monitoring & Observability
-langsmith==0.0.77
-arize-phoenix==2.0.0
+langsmith==0.0.83
+arize-phoenix>=3.13.0
 prometheus-client==0.19.0
 
 # Testing
