@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
 from dataclasses import dataclass
 
 
@@ -202,15 +203,28 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import pickle
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        except Exception as e:
+            print(f"❌ Error loading FAISS index: {e}")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
@@ -240,6 +254,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -284,6 +299,17 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filters
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
