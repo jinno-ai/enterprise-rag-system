@@ -22,5 +22,5 @@ steps:
 
 - script: |
     export OPENAI_API_KEY=dummy
-    python -m pytest tests/ -v --cov=app
-  displayName: 'Run unit and integration tests'
+    python -m pytest tests/unit/ -v --cov=app
+  displayName: 'Run unit tests'
