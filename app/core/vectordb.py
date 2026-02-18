@@ -8,6 +8,11 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+try:
+    import faiss
+except ImportError:
+    faiss = None
 from dataclasses import dataclass
 
 
@@ -62,6 +67,29 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Convenience method to add documents by generating IDs"""
+        import hashlib
+
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        ids = []
+        for doc, meta in zip(documents, metadatas):
+            content_hash = hashlib.md5(doc.encode()).hexdigest()
+            source = meta.get('source', 'unknown')
+            ids.append(f"{source}_{content_hash[:16]}")
+            # Ensure text is in metadata
+            meta["text"] = doc
+
+        self.upsert(embeddings, ids, metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -201,7 +229,8 @@ class FAISSVectorDB(VectorDB):
     def connect(self) -> None:
         """Load FAISS index from disk"""
         try:
-            import faiss
+            if faiss is None:
+                raise ImportError("faiss not installed")
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -215,7 +244,8 @@ class FAISSVectorDB(VectorDB):
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
         try:
-            import faiss
+            if faiss is None:
+                raise ImportError("faiss not installed")
             
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
@@ -268,13 +298,10 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        import faiss
-        
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        distances, indices = self.index.search(query_np, top_k * 2)  # Get more results for filtering
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +311,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filters
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
@@ -312,7 +353,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("No index to save")
         
-        import faiss
         import pickle
         
         faiss.write_index(self.index, path)

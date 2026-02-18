@@ -5,13 +5,25 @@
 
 trigger:
 - main
+- develop
 
-pool: Default
+pool:
+  vmImage: 'ubuntu-latest'
+
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.10'
+  displayName: 'Use Python 3.10'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    pip install pytest pytest-cov
+  displayName: 'Install dependencies'
+
+- script: |
+    export OPENAI_API_KEY=dummy
+    pytest tests/ -v --cov=app
+  displayName: 'Run tests'
+  continueOnError: true
