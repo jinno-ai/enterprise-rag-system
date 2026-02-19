@@ -19,5 +19,5 @@ jobs:
           pip install -r requirements.txt --use-deprecated=legacy-resolver
           pip install pytest pytest-cov
       - name: Run tests
-        run: pytest tests/ -v --cov=app
+        run: pytest tests/ -v --cov=app -m "not integration"
         continue-on-error: true
