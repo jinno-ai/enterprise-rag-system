@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
 from dataclasses import dataclass
 
 
@@ -62,6 +63,31 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Convenience method to add documents with auto-generated IDs"""
+        import hashlib
+
+        ids = []
+        for doc in documents:
+            doc_id = hashlib.md5(doc.encode()).hexdigest()
+            ids.append(doc_id)
+
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        # Add text to metadata if not present
+        for doc, meta in zip(documents, metadatas):
+            if "text" not in meta:
+                meta["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,6 +262,7 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        import faiss
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
@@ -265,11 +292,11 @@ class FAISSVectorDB(VectorDB):
         filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         """Search for similar vectors in FAISS"""
+        import faiss
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
-        import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -291,6 +318,19 @@ class FAISSVectorDB(VectorDB):
                     text=metadata.get("text", "")
                 ))
         
+        # Apply simple metadata filtering if provided
+        if filter_dict:
+            filtered_results = []
+            for res in search_results:
+                is_match = True
+                for key, value in filter_dict.items():
+                    if res.metadata.get(key) != value:
+                        is_match = False
+                        break
+                if is_match:
+                    filtered_results.append(res)
+            return filtered_results
+
         return search_results
     
     def delete(self, ids: List[str]) -> None:

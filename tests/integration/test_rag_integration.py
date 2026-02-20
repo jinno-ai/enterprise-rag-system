@@ -8,6 +8,18 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, Mock
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings to avoid API calls"""
+    with patch('openai.embeddings.create') as mock_create:
+        mock_response = Mock()
+        # Mock embedding of dimension 1536
+        mock_response.data = [Mock(embedding=[0.1] * 1536) for _ in range(100)]
+        mock_create.return_value = mock_response
+        yield mock_create
 
 
 @pytest.fixture
@@ -50,6 +62,8 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(
         vector_db=vector_db,
@@ -84,6 +98,8 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -116,6 +132,8 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
@@ -177,6 +195,8 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -197,6 +217,8 @@ def test_retrieval_with_filters():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -229,9 +251,12 @@ def test_confidence_calculation():
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
+    from app.services.retrieval import HybridRetriever
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
