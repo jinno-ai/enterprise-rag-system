@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -74,16 +75,21 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+@patch('openai.embeddings.create')
+def test_vector_db_operations(mock_embed, temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Mock OpenAI embeddings
+    mock_embed.return_value = MagicMock(data=[MagicMock(embedding=[0.1] * 1536) for _ in sample_documents])
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -105,20 +111,32 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+@patch('openai.embeddings.create')
+def test_hybrid_retrieval(mock_embed, temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
+
+    # Mock OpenAI embeddings
+    mock_embed.return_value = MagicMock(data=[MagicMock(embedding=[0.1] * 1536) for _ in sample_documents])
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
+    # We also need to mock embed_query which calls embed_texts
+    # In this test, retrieve() calls embed_query.
+    mock_embed.side_effect = [
+        MagicMock(data=[MagicMock(embedding=[0.1] * 1536) for _ in sample_documents]), # for Indexing
+        MagicMock(data=[MagicMock(embedding=[0.1] * 1536)]) # for Query
+    ]
+
     embeddings = embedding_model.embed_texts(texts)
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
@@ -177,6 +195,7 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -188,15 +207,23 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+@patch('openai.embeddings.create')
+def test_retrieval_with_filters(mock_embed):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Mock OpenAI embeddings
+    mock_embed.side_effect = [
+        MagicMock(data=[MagicMock(embedding=[0.1] * 1536) for _ in range(3)]), # for Indexing
+        MagicMock(data=[MagicMock(embedding=[0.1] * 1536)]) # for Query
+    ]
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -222,18 +249,19 @@ def test_retrieval_with_filters():
 
 
 @pytest.mark.integration
-def test_confidence_calculation():
+@patch('openai.embeddings.create')
+def test_confidence_calculation(mock_embed):
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
-    embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=1536)
 
-    retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
+    retriever = HybridRetriever(vector_db=vector_db, embedding_model=MagicMock())
     pipeline = RAGPipeline(retriever=retriever)
 
     # Test with high-quality results
