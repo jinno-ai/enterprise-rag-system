@@ -5,6 +5,7 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -240,6 +241,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -284,6 +286,9 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+                if filter_dict:
+                    if not all(metadata.get(k) == v for k, v in filter_dict.items()):
+                        continue
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),

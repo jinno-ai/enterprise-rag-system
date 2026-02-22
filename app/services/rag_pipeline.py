@@ -45,7 +45,7 @@ class RAGPipeline:
         
         # Set OpenAI API key
         openai.api_key = settings.openai_api_key
-    
+
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
         prompt = f"""You are a helpful AI assistant that answers questions based on the provided context.
@@ -65,7 +65,7 @@ Instructions:
 Question: {query}
 
 Answer:"""
-        
+
         return prompt
     
     def _call_llm(self, prompt: str) -> Dict[str, Any]:
