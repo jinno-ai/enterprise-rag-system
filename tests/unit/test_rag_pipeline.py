@@ -32,12 +32,14 @@ def sample_retrieval_results():
         RetrievalResult(
             document='Sample document text 1',
             score=0.85,
-            metadata={'filename': 'test1.pdf', 'page': 1}
+            metadata={'filename': 'test1.pdf', 'page': 1},
+            source='test1.pdf'
         ),
         RetrievalResult(
             document='Sample document text 2',
             score=0.75,
-            metadata={'filename': 'test2.pdf', 'page': 2}
+            metadata={'filename': 'test2.pdf', 'page': 2},
+            source='test2.pdf'
         )
     ]
 
@@ -58,7 +60,8 @@ def test_rag_pipeline_initialization(mock_retriever):
 
 
 @patch('app.services.rag_pipeline.openai')
-def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_results, mock_llm_response):
+@patch('app.services.rag_pipeline.time')
+def test_rag_pipeline_query(mock_time, mock_openai, mock_retriever, sample_retrieval_results, mock_llm_response):
     """Test RAG pipeline query"""
     # Setup mocks
     mock_retriever.retrieve.return_value = sample_retrieval_results
@@ -66,6 +69,9 @@ def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_result
         Mock(message=Mock(content=mock_llm_response['answer']))
     ]
     mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+
+    # Mock time to ensure latency > 0
+    mock_time.time.side_effect = [100.0, 100.1]
 
     # Create pipeline
     pipeline = RAGPipeline(
