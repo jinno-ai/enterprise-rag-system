@@ -87,7 +87,7 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
             vector_db.create_index(dimension=embedding_model.dimension)
         
         ids = [chunk.doc_id for chunk in chunks]
-        metadata = [chunk.metadata for chunk in chunks]
+        metadata = [{**chunk.metadata, "text": chunk.content} for chunk in chunks]
         
         vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
         
@@ -176,7 +176,7 @@ async def upload_document(
                 vector_db.create_index(dimension=embedding_model.dimension)
             
             ids = [chunk.doc_id for chunk in chunks]
-            metadata = [chunk.metadata for chunk in chunks]
+            metadata = [{**chunk.metadata, "text": chunk.content} for chunk in chunks]
             
             vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
             
