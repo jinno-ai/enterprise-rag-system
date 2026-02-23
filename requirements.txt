@@ -4,19 +4,19 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 
 # LLM & AI Frameworks
-langchain==0.1.0
-langchain-community==0.0.10
-langchain-openai==0.0.5
-langchain-anthropic==0.0.4
+langchain==0.1.20
+langchain-community==0.0.38
+langchain-openai==0.1.7
+langchain-anthropic==0.1.11
 langchain-google-genai==0.0.6
-openai==1.10.0
-anthropic==0.8.1
+openai==1.24.0
+anthropic==0.29.0
 cohere==4.40
 
 # Vector Databases
 pinecone-client==3.0.0
 weaviate-client==3.26.0
-faiss-cpu==1.7.4
+faiss-cpu==1.8.0
 chromadb==0.4.22
 
 # Document Processing
@@ -45,14 +45,13 @@ pandas==2.1.4
 # Caching & Performance
 redis==5.0.1
 httpx==0.26.0
-asyncio==3.4.3
 
 # Monitoring & Observability
-langsmith==0.0.77
-arize-phoenix==2.0.0
+langsmith==0.1.17
 prometheus-client==0.19.0
 
 # Testing
+numpy<2.0.0
 pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0

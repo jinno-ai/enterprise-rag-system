@@ -9,6 +9,9 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 from dataclasses import dataclass
+import os
+import pickle
+import hashlib
 
 
 @dataclass
@@ -62,6 +65,20 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper to add documents with generated IDs"""
+        ids = []
+        for doc in documents:
+            doc_hash = hashlib.md5(doc.encode()).hexdigest()
+            ids.append(f"doc_{doc_hash}")
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 class PineconeVectorDB(VectorDB):
