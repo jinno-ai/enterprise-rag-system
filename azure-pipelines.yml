@@ -17,7 +17,7 @@ steps:
   displayName: 'Install dependencies'
 
 - script: |
-    pytest tests/ -v --cov=app
+    python -m pytest tests/ -v --cov=app -m "unit or integration or not integration"
   displayName: 'Run tests'
   env:
     OPENAI_API_KEY: 'dummy'

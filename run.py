@@ -18,7 +18,7 @@ from app.services.rag_pipeline import RAGPipeline
 from app.services.retrieval import HybridRetriever
 from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
-from app.services.document_loader import DocumentLoader
+from app.services.document_loader import DocumentLoader, TextSplitter
 
 
 def query_command(args):
@@ -88,7 +88,6 @@ def ingest_command(args):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
-    from app.services.document_loader import TextSplitter
 
     # Load documents
     source_path = Path(args.source)

@@ -182,12 +182,19 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+@patch('openai.embeddings.create')
+@patch('openai.chat.completions.create')
+def test_batch_query(mock_chat, mock_embed):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Setup mocks
+    mock_embed.return_value.data = [MagicMock(embedding=[0.1] * 1536)]
+    mock_chat.return_value.choices = [MagicMock(message=MagicMock(content="Test answer"), finish_reason="stop")]
+    mock_chat.return_value.usage.total_tokens = 10
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
