@@ -203,20 +203,22 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
-            import pickle
+            import json
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
 
                 # Load metadata
-                metadata_path = self.index_path + ".metadata.pkl"
+                metadata_path = self.index_path + ".metadata.json"
                 if os.path.exists(metadata_path):
-                    with open(metadata_path, 'rb') as f:
-                        data = pickle.load(f)
+                    with open(metadata_path, 'r') as f:
+                        data = json.load(f)
                         self.metadata_store = data.get('metadata_store', {})
                         self.id_to_idx = data.get('id_to_idx', {})
-                        self.idx_to_id = data.get('idx_to_id', {})
+                        # JSON keys are always strings, convert back to int for idx_to_id
+                        idx_to_id_raw = data.get('idx_to_id', {})
+                        self.idx_to_id = {int(k): v for k, v in idx_to_id_raw.items()}
                     print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
@@ -339,14 +341,14 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
+        import json
         
         faiss.write_index(self.index, path)
         
         # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
                 'idx_to_id': self.idx_to_id
