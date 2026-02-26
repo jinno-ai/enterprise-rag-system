@@ -2,8 +2,7 @@ trigger:
 - main
 - develop
 
-pool:
-  vmImage: ubuntu-latest
+pool: Default
 
 variables:
   - name: OPENAI_API_KEY
@@ -30,3 +29,4 @@ steps:
     codeCoverageTool: Cobertura
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
   displayName: 'Publish code coverage'
+  condition: succeededOrFailed()
