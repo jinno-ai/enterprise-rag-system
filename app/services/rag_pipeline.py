@@ -5,7 +5,7 @@ This module orchestrates the complete RAG workflow.
 """
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 import openai
 
@@ -24,7 +24,7 @@ class RAGResponse:
     confidence: float
     latency_ms: int
     tokens_used: int
-    retrieval_results: List[RetrievalResult]
+    retrieval_results: List[RetrievalResult] = field(default_factory=list)
 
 
 class RAGPipeline:
