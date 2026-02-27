@@ -24,7 +24,11 @@ class RAGResponse:
     confidence: float
     latency_ms: int
     tokens_used: int
-    retrieval_results: List[RetrievalResult]
+    retrieval_results: List[RetrievalResult] = None
+
+    def __post_init__(self):
+        if self.retrieval_results is None:
+            self.retrieval_results = []
 
 
 class RAGPipeline:
