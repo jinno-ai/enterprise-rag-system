@@ -65,6 +65,27 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Convenience method to add multiple documents"""
+        import hashlib
+
+        ids = []
+        for content in documents:
+            # Generate ID based on content hash
+            doc_id = hashlib.md5(content.encode()).hexdigest()
+            ids.append(doc_id)
+
+        # Add content to metadata
+        for meta, content in zip(metadatas, documents):
+            meta['text'] = content
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
