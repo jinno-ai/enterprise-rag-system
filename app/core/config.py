@@ -10,12 +10,22 @@ from typing import Optional
 import os
 
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
     # API Keys
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
-    anthropic_api_key: Optional[str] = Field(None, env="ANTHROPIC_API_KEY")
+    openai_api_key: Optional[str] = Field(None, alias="OPENAI_API_KEY")
+    anthropic_api_key: Optional[str] = Field(None, alias="ANTHROPIC_API_KEY")
     cohere_api_key: Optional[str] = Field(None, env="COHERE_API_KEY")
     
     # Vector Database
@@ -53,12 +63,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Enterprise RAG System"
     app_version: str = "0.1.0"
-    debug: bool = Field(False, env="DEBUG")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    debug: bool = Field(False, alias="DEBUG")
 
 
 # Global settings instance
