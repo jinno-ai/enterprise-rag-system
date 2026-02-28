@@ -18,6 +18,7 @@ pinecone-client==2.2.4
 weaviate-client==3.26.0
 faiss-cpu==1.8.0
 chromadb==0.4.22
+numpy<2.0.0
 
 # Document Processing
 unstructured==0.11.0
@@ -41,7 +42,6 @@ pydantic[email]==2.5.0
 streamlit==1.30.0
 plotly==5.18.0
 pandas==2.1.4
-numpy<2.0.0
 
 # Caching & Performance
 redis==5.0.1
