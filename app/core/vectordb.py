@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 from dataclasses import dataclass
+import os
 
 
 @dataclass
@@ -62,6 +63,23 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        import hashlib
+        ids = [hashlib.md5(doc.encode()).hexdigest() for doc in documents]
+
+        # Ensure 'text' is in metadata for retrieval
+        for doc, meta in zip(documents, metadatas):
+            if "text" not in meta:
+                meta["text"] = doc
+
+        self.upsert(embeddings, ids, metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -240,6 +258,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
