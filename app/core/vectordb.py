@@ -9,7 +9,8 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 import os
-import pickle
+import json
+import uuid
 from dataclasses import dataclass
 
 
@@ -72,7 +73,6 @@ class VectorDB(ABC):
         metadatas: List[Dict[str, Any]]
     ) -> None:
         """Convenience method to add documents with auto-generated IDs"""
-        import uuid
         ids = [str(uuid.uuid4()) for _ in documents]
 
         # Ensure 'text' is in metadata for SearchResult
@@ -211,6 +211,7 @@ class FAISSVectorDB(VectorDB):
     """FAISS vector database implementation (for local development)"""
     
     def __init__(self, index_path: Optional[str] = None):
+        import faiss
         self.index_path = index_path
         self.index = None
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
@@ -221,20 +222,20 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
-            
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
 
-                # Load metadata if exists
-                metadata_path = self.index_path + ".metadata.pkl"
-                if os.path.exists(metadata_path):
-                    with open(metadata_path, 'rb') as f:
-                        data = pickle.load(f)
+                # Load metadata if exists (try JSON first)
+                json_metadata_path = self.index_path + ".metadata.json"
+                if os.path.exists(json_metadata_path):
+                    with open(json_metadata_path, 'r') as f:
+                        data = json.load(f)
                         self.metadata_store = data.get('metadata_store', {})
                         self.id_to_idx = data.get('id_to_idx', {})
-                        self.idx_to_id = data.get('idx_to_id', {})
-                    print(f"✅ Loaded metadata from: {metadata_path}")
+                        # JSON keys are always strings, convert back to int if needed
+                        self.idx_to_id = {int(k): v for k, v in data.get('idx_to_id', {}).items()}
+                    print(f"✅ Loaded metadata from: {json_metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -245,7 +246,6 @@ class FAISSVectorDB(VectorDB):
         """Create a new FAISS index"""
         try:
             import faiss
-            
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
             elif metric == "euclidean":
@@ -342,20 +342,22 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
+
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
-        # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        # Save metadata as JSON
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
                 'idx_to_id': self.idx_to_id
             }, f)
         
-        print(f"✅ Saved FAISS index to: {path}")
+        print(f"✅ Saved FAISS index and metadata to: {path}")
 
 
 def get_vector_db(db_type: str = "faiss", **kwargs) -> VectorDB:
