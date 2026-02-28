@@ -23,5 +23,11 @@ steps:
 
 - script: |
     export OPENAI_API_KEY=dummy
-    pytest tests/ -v --cov=app
+    pytest tests/ -v --cov=app --cov-report=xml
   displayName: 'Run tests'
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+  displayName: 'Publish coverage'
