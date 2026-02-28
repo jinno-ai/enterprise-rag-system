@@ -22,4 +22,3 @@ jobs:
         env:
           OPENAI_API_KEY: dummy_key_for_ci
         run: pytest tests/ -v --cov=app
-        continue-on-error: true
