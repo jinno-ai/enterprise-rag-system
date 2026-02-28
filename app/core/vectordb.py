@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import pickle
 from dataclasses import dataclass
 
 
@@ -62,6 +64,23 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Convenience method to add documents with auto-generated IDs"""
+        import uuid
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Ensure 'text' is in metadata for SearchResult
+        for doc, meta in zip(documents, metadatas):
+            if 'text' not in meta:
+                meta['text'] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -206,6 +225,16 @@ class FAISSVectorDB(VectorDB):
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata if exists
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
