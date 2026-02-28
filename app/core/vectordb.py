@@ -64,6 +64,23 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        import hashlib
+        ids = [hashlib.md5(doc.encode()).hexdigest() for doc in documents]
+
+        # Ensure 'text' is in metadata for retrieval
+        for doc, meta in zip(documents, metadatas):
+            if "text" not in meta:
+                meta["text"] = doc
+
+        self.upsert(embeddings, ids, metadatas)
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
@@ -241,6 +258,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         

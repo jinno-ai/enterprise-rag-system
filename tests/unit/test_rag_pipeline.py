@@ -62,7 +62,7 @@ def test_rag_pipeline_initialization(mock_retriever):
 def test_rag_pipeline_query(mock_openai, mock_time, mock_retriever, sample_retrieval_results, mock_llm_response):
     """Test RAG pipeline query"""
     # Setup mocks
-    mock_time.time.side_effect = [1000.0, 1000.1]  # Ensure latency > 0
+    mock_time.time.side_effect = [1000.0, 1000.1, 1000.2, 1000.3]  # Ensure latency > 0
     mock_retriever.retrieve.return_value = sample_retrieval_results
     mock_openai.chat.completions.create.return_value.choices = [
         Mock(message=Mock(content=mock_llm_response['answer']))
