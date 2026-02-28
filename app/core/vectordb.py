@@ -225,18 +225,31 @@ class FAISSVectorDB(VectorDB):
         self.idx_to_id: Dict[int, str] = {}
     
     def connect(self) -> None:
-        """Load FAISS index from disk"""
+        """Load FAISS index and metadata from disk"""
         try:
             import faiss
+            import pickle
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        except Exception as e:
+            print(f"⚠️  Failed to load metadata: {e}")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
@@ -355,6 +368,9 @@ class FAISSVectorDB(VectorDB):
         import faiss
         import pickle
         
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
         faiss.write_index(self.index, path)
         
         # Save metadata
