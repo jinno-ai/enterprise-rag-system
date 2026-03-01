@@ -57,8 +57,11 @@ def test_rag_pipeline_initialization(mock_retriever):
     assert pipeline.max_tokens == 2048
 
 
+@patch('app.services.rag_pipeline.time.time')
 @patch('app.services.rag_pipeline.openai')
-def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_results, mock_llm_response):
+def test_rag_pipeline_query(mock_openai, mock_time, mock_retriever, sample_retrieval_results, mock_llm_response):
+    # Mock time to ensure non-zero latency
+    mock_time.side_effect = [1000.0, 1000.1]
     """Test RAG pipeline query"""
     # Setup mocks
     mock_retriever.retrieve.return_value = sample_retrieval_results
