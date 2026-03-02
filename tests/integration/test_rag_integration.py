@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 @pytest.fixture
@@ -50,6 +51,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(
         vector_db=vector_db,
@@ -84,22 +86,32 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Generate embeddings
-    texts = [doc["text"] for doc in sample_documents]
-    embeddings = embedding_model.embed_texts(texts)
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in range(3)]
+        texts = [doc["text"] for doc in sample_documents]
+        embeddings = embedding_model.embed_texts(texts)
 
     # Test add documents
-    vector_db.add_documents(
-        documents=texts,
-        embeddings=embeddings,
-        metadatas=[doc["metadata"] for doc in sample_documents]
-    )
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in range(3)]
+
+        vector_db.add_documents(
+            documents=texts,
+            embeddings=embeddings,
+            metadatas=[doc["metadata"] for doc in sample_documents]
+        )
 
     # Test search
     query = "artificial intelligence and machine learning"
-    query_embedding = embedding_model.embed_query(query)
-    results = vector_db.search(query_embedding, top_k=3)
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536)]
+        query_embedding = embedding_model.embed_query(query)
+
+    with patch('app.core.vectordb.faiss') as mock_faiss:
+        results = vector_db.search(query_embedding, top_k=3)
 
     assert len(results) > 0
 
@@ -116,13 +128,22 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents
-    texts = [doc["text"] for doc in sample_documents]
-    embeddings = embedding_model.embed_texts(texts)
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in range(3)]
+        texts = [doc["text"] for doc in sample_documents]
+        embeddings = embedding_model.embed_texts(texts)
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in range(3)]
+
+        # Search for a query
+        query_embedding = embedding_model.embed_query("What is deep learning?")
+
     retriever = HybridRetriever(
         vector_db=vector_db,
         embedding_model=embedding_model,
@@ -200,7 +221,9 @@ def test_retrieval_with_filters():
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
-    embeddings = embedding_model.embed_texts(documents)
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in range(3)]
+        embeddings = embedding_model.embed_texts(documents)
     metadatas = [
         {"category": "tech"},
         {"category": "business"},
@@ -210,12 +233,16 @@ def test_retrieval_with_filters():
     vector_db.add_documents(documents, embeddings, metadatas)
 
     # Search with filter
-    query_embedding = embedding_model.embed_query("test")
-    results = vector_db.search(
-        query_embedding,
-        top_k=10,
-        filter_dict={"category": "tech"}
-    )
+    with patch('app.core.embeddings.openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536)]
+        query_embedding = embedding_model.embed_query("test")
+
+    with patch('app.core.vectordb.faiss') as mock_faiss:
+        results = vector_db.search(
+            query_embedding,
+            top_k=10,
+            filter_dict={"category": "tech"}
+        )
 
     # Should only return tech documents
     assert len(results) <= 2
@@ -232,6 +259,7 @@ def test_confidence_calculation():
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)

@@ -11,7 +11,10 @@ import numpy as np
 import os
 import pickle
 import hashlib
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -268,6 +271,7 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
+        import faiss
         import numpy as np
         
         vectors_np = np.array(vectors, dtype=np.float32)
