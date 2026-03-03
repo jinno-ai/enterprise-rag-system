@@ -24,7 +24,7 @@ class RAGResponse:
     confidence: float
     latency_ms: int
     tokens_used: int
-    retrieval_results: List[RetrievalResult]
+    retrieval_results: List[RetrievalResult] = None
 
 
 class RAGPipeline:

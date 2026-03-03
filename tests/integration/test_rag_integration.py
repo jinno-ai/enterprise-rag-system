@@ -74,7 +74,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+def test_vector_db_operations(temp_vector_db, sample_documents, mocker):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -85,11 +85,16 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
     embedding_model = get_embedding_model()
 
+    # Mock embeddings
+    mock_embeddings = [[0.1] * 1536 for _ in sample_documents]
+    mocker.patch("openai.embeddings.create", return_value=mocker.Mock(data=[mocker.Mock(embedding=emb) for emb in mock_embeddings]))
+
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
 
     # Test add documents
+    vector_db.create_index(dimension=1536)
     vector_db.add_documents(
         documents=texts,
         embeddings=embeddings,
@@ -105,7 +110,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+def test_hybrid_retrieval(temp_vector_db, sample_documents, mocker):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -117,7 +122,12 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
 
     embedding_model = get_embedding_model()
 
+    # Mock embeddings
+    mock_embeddings = [[0.1] * 1536 for _ in sample_documents]
+    mocker.patch("openai.embeddings.create", return_value=mocker.Mock(data=[mocker.Mock(embedding=emb) for emb in mock_embeddings]))
+
     # Index documents
+    vector_db.create_index(dimension=1536)
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
@@ -165,7 +175,7 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+def test_batch_query(mocker):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -177,6 +187,11 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Mock OpenAI
+    mocker.patch("openai.embeddings.create", return_value=mocker.Mock(data=[mocker.Mock(embedding=[0.1] * 1536)]))
+    mocker.patch("openai.chat.completions.create", return_value=mocker.Mock(choices=[mocker.Mock(message=mocker.Mock(content="Mocked answer"))], usage=mocker.Mock(total_tokens=10)))
+
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -188,7 +203,7 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(mocker):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -198,7 +213,11 @@ def test_retrieval_with_filters():
 
     embedding_model = get_embedding_model()
 
+    # Mock embeddings
+    mocker.patch("openai.embeddings.create", return_value=mocker.Mock(data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(3)]))
+
     # Index documents with metadata
+    vector_db.create_index(dimension=1536)
     documents = ["Doc 1", "Doc 2", "Doc 3"]
     embeddings = embedding_model.embed_texts(documents)
     metadatas = [
@@ -224,7 +243,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
