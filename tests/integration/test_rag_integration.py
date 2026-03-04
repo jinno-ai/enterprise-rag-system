@@ -90,11 +90,10 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     embeddings = embedding_model.embed_texts(texts)
 
     # Test add documents
-    ids = [f"doc_{i}" for i in range(len(texts))]
-    vector_db.upsert(
-        vectors=embeddings,
-        ids=ids,
-        metadata=[doc["metadata"] for doc in sample_documents]
+    vector_db.add_documents(
+        documents=texts,
+        embeddings=embeddings,
+        metadatas=[doc["metadata"] for doc in sample_documents]
     )
 
     # Test search
@@ -121,8 +120,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
-    ids = [f"doc_{i}" for i in range(len(texts))]
-    vector_db.upsert(embeddings, ids, [doc["metadata"] for doc in sample_documents])
+    vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
     retriever = HybridRetriever(
@@ -150,14 +148,12 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"},
-            source="long_doc.pdf"
+            metadata={"source": "long_doc.pdf"}
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"},
-            source="short_doc.pdf"
+            metadata={"source": "short_doc.pdf"}
         )
     ]
 
@@ -211,8 +207,7 @@ def test_retrieval_with_filters():
         {"category": "tech"}
     ]
 
-    ids = [f"doc_{i}" for i in range(len(documents))]
-    vector_db.upsert(embeddings, ids, metadatas)
+    vector_db.add_documents(documents, embeddings, metadatas)
 
     # Search with filter
     query_embedding = embedding_model.embed_query("test")
@@ -229,7 +224,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult, HybridRetriever
+    from app.services.retrieval import RetrievalResult
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -246,8 +241,7 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"},
-            source="doc1.pdf"
+            metadata={"source": "doc1.pdf"}
         )
     ]
 
