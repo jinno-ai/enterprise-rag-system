@@ -30,6 +30,7 @@ pandoc==2.3
 # Embeddings & Search
 sentence-transformers==2.2.2
 rank-bm25==0.2.2
+numpy<2.0.0
 
 # Web Framework
 fastapi==0.109.0
