@@ -7,6 +7,7 @@ This is the main application file that sets up the FastAPI server.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from typing import Optional
 import uvicorn
 
 from app.core.config import get_settings
@@ -21,7 +22,7 @@ settings = get_settings()
 
 
 # Global instances (initialized at startup)
-_rag_pipeline: RAGPipeline = None
+_rag_pipeline: Optional[RAGPipeline] = None
 
 
 @asynccontextmanager

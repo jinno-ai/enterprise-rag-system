@@ -89,7 +89,7 @@ Answer:"""
             
             return {
                 'answer': response.choices[0].message.content,
-                'tokens_used': response.usage.total_tokens,
+                'tokens_used': response.usage.total_tokens if response.usage else 0,
                 'finish_reason': response.choices[0].finish_reason
             }
         
