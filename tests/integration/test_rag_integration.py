@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 @pytest.fixture
@@ -74,14 +75,19 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+@patch('app.core.embeddings.openai.embeddings.create')
+def test_vector_db_operations(mock_embed, temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
+    # Mock embeddings
+    mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in range(len(sample_documents))]
+
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
+    vector_db.create_index(dimension=1536)
 
     embedding_model = get_embedding_model()
 
@@ -95,6 +101,9 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
         embeddings=embeddings,
         metadatas=[doc["metadata"] for doc in sample_documents]
     )
+
+    # Mock query embedding
+    mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536)]
 
     # Test search
     query = "artificial intelligence and machine learning"
