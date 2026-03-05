@@ -8,6 +8,10 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import json
+import pickle
+import hashlib
 from dataclasses import dataclass
 
 
