@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, Mock
 
 
 @pytest.fixture
@@ -16,6 +17,26 @@ def temp_vector_db():
     with tempfile.TemporaryDirectory() as tmpdir:
         index_path = os.path.join(tmpdir, "test_index.bin")
         yield index_path
+
+
+@pytest.fixture(autouse=True)
+def mock_openai():
+    """Mock OpenAI API calls for integration tests"""
+    with patch('openai.embeddings.create') as mock_embed, \
+         patch('openai.chat.completions.create') as mock_chat:
+
+        # Mock embeddings
+        mock_embed.return_value.data = [
+            Mock(embedding=[0.1] * 1536)
+        ]
+
+        # Mock chat completions
+        mock_chat.return_value.choices = [
+            Mock(message=Mock(content="Test answer"))
+        ]
+        mock_chat.return_value.usage.total_tokens = 50
+
+        yield mock_embed, mock_chat
 
 
 @pytest.fixture
@@ -229,6 +250,7 @@ def test_confidence_calculation():
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
+    from app.services.retrieval import HybridRetriever
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()

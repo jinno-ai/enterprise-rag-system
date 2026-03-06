@@ -5,6 +5,10 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import json
+import pickle
+import hashlib
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -62,6 +66,35 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Convenience method to add documents with auto-generated IDs"""
+        # Create index if it doesn't exist and we have embeddings to determine dimension
+        if hasattr(self, 'index') and self.index is None and embeddings:
+            self.create_index(dimension=len(embeddings[0]))
+
+        ids = []
+        metadata_list = []
+
+        for i, text in enumerate(documents):
+            # Generate ID based on content
+            doc_id = hashlib.md5(text.encode()).hexdigest()
+            ids.append(doc_id)
+
+            # Prepare metadata
+            meta = {}
+            if metadatas and i < len(metadatas):
+                meta = metadatas[i].copy()
+            meta['text'] = text  # Ensure text is in metadata for retrieval
+            metadata_list.append(meta)
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadata_list)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -239,7 +272,7 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
