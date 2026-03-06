@@ -145,12 +145,12 @@ def test_context_compression():
 
     # Create sample retrieval results
     results = [
-        RetrievalResult(
+        RetrievalResult(source="test",
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
             metadata={"source": "long_doc.pdf"}
         ),
-        RetrievalResult(
+        RetrievalResult(source="test",
             document="Short document.",
             score=0.8,
             metadata={"source": "short_doc.pdf"}
@@ -238,7 +238,7 @@ def test_confidence_calculation():
 
     # Test with high-quality results
     high_quality_results = [
-        RetrievalResult(
+        RetrievalResult(source="test",
             document="Relevant document",
             score=0.9,
             metadata={"source": "doc1.pdf"}
