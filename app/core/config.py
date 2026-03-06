@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     # API Keys
-    openai_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("OPENAI_API_KEY", "openai_api_key"))
+    openai_api_key: str = Field(..., validation_alias=AliasChoices("OPENAI_API_KEY", "openai_api_key"))
     anthropic_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("ANTHROPIC_API_KEY", "anthropic_api_key"))
     cohere_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("COHERE_API_KEY", "cohere_api_key"))
     
