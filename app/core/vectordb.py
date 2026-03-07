@@ -7,6 +7,8 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+import os
+import pickle
 import numpy as np
 from dataclasses import dataclass
 
