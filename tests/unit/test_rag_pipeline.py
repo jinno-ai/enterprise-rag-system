@@ -53,14 +53,12 @@ def sample_retrieval_results():
         RetrievalResult(
             document='Sample document text 1',
             score=0.85,
-            metadata={'filename': 'test1.pdf', 'page': 1},
-            source='test1.pdf'
+            metadata={'filename': 'test1.pdf', 'page': 1}
         ),
         RetrievalResult(
             document='Sample document text 2',
             score=0.75,
-            metadata={'filename': 'test2.pdf', 'page': 2},
-            source='test2.pdf'
+            metadata={'filename': 'test2.pdf', 'page': 2}
         )
     ]
 
