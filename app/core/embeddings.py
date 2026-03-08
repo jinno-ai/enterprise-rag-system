@@ -158,8 +158,42 @@ class CohereEmbeddings(EmbeddingModel):
         return 1024
 
 
-def get_embedding_model(model_name: Optional[str] = None) -> EmbeddingModel:
+class MockEmbeddings(EmbeddingModel):
+    """Mock embedding model for testing purposes"""
+
+    def __init__(self, dimension: int = 1536):
+        self._dimension = dimension
+        import random
+        self._random = random.Random(42)  # Fixed seed for reproducibility
+
+    def embed_texts(self, texts: List[str]) -> List[List[float]]:
+        """Generate deterministic mock embeddings for texts"""
+        embeddings = []
+        for text in texts:
+            # Generate deterministic embedding based on text content
+            self._random.seed(hash(text) % (2 ** 32))
+            embedding = [self._random.random() for _ in range(self._dimension)]
+            # Normalize the embedding
+            norm = sum(x * x for x in embedding) ** 0.5
+            embedding = [x / norm for x in embedding]
+            embeddings.append(embedding)
+        return embeddings
+
+    def embed_query(self, text: str) -> List[float]:
+        """Generate mock embedding for a single query"""
+        return self.embed_texts([text])[0]
+
+    @property
+    def dimension(self) -> int:
+        """Get embedding dimension"""
+        return self._dimension
+
+
+def get_embedding_model(model_name: Optional[str] = None, use_mock: bool = False) -> EmbeddingModel:
     """Factory function to get embedding model instance"""
+    if use_mock:
+        return MockEmbeddings()
+
     model_name = model_name or settings.embedding_model
 
     if "ada" in model_name.lower() or "openai" in model_name.lower():
