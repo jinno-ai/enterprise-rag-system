@@ -11,6 +11,7 @@ import numpy as np
 import os
 import json
 import uuid
+import faiss
 from dataclasses import dataclass
 
 
@@ -211,7 +212,6 @@ class FAISSVectorDB(VectorDB):
     """FAISS vector database implementation (for local development)"""
     
     def __init__(self, index_path: Optional[str] = None):
-        import faiss
         self.index_path = index_path
         self.index = None
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
@@ -221,7 +221,6 @@ class FAISSVectorDB(VectorDB):
     def connect(self) -> None:
         """Load FAISS index from disk"""
         try:
-            import faiss
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
@@ -245,7 +244,6 @@ class FAISSVectorDB(VectorDB):
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
         try:
-            import faiss
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
             elif metric == "euclidean":
