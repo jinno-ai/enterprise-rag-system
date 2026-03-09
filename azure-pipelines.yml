@@ -4,6 +4,9 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
+variables:
+  OPENAI_API_KEY: 'dummy'
+
 steps:
 - task: UsePythonVersion@0
   inputs:
@@ -11,12 +14,16 @@ steps:
   displayName: 'Use Python 3.10'
 
 - script: |
+    python --version
+    pip --version
+  displayName: 'Debug Environment'
+
+- script: |
     python -m pip install --upgrade pip
     pip install -r requirements.txt
-    pip install pytest pytest-cov
+    pip install pytest pytest-cov pytest-mock
   displayName: 'Install dependencies'
 
 - script: |
-    export OPENAI_API_KEY="dummy_key_for_ci"
-    pytest tests/ -m "not integration"
+    python -m pytest tests/ -m "not integration"
   displayName: 'Run tests'
