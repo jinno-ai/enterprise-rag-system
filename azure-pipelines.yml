@@ -25,5 +25,11 @@ steps:
   displayName: 'Install dependencies'
 
 - script: |
-    python -m pytest tests/ -m "not integration"
-  displayName: 'Run tests'
+    python -m pytest tests/ -m "not integration" --cov=app --cov-report=xml
+  displayName: 'Run tests with coverage'
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+  displayName: 'Publish coverage results'
