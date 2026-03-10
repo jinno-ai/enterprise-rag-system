@@ -7,6 +7,9 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+import os
+import uuid
+import json
 import numpy as np
 from dataclasses import dataclass
 
@@ -62,6 +65,25 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Convenience method to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        # Ensure text is in metadata
+        for doc, meta in zip(documents, metadatas):
+            meta["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -206,6 +228,18 @@ class FAISSVectorDB(VectorDB):
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata
+                metadata_path = self.index_path + ".metadata.json"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r') as f:
+                        data = json.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        # JSON keys are always strings, convert back to int
+                        idx_to_id_raw = data.get('idx_to_id', {})
+                        self.idx_to_id = {int(k): v for k, v in idx_to_id_raw.items()}
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -240,6 +274,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -257,6 +292,10 @@ class FAISSVectorDB(VectorDB):
             self.metadata_store[id_] = meta
         
         print(f"✅ Upserted {len(vectors)} vectors")
+
+        # Auto-save after upsert if index path exists
+        if self.index_path:
+            self.save(self.index_path)
     
     def search(
         self,
@@ -274,7 +313,9 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # If filtering is requested, we need to over-retrieve then filter
+        search_top_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_top_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -282,14 +323,30 @@ class FAISSVectorDB(VectorDB):
                 continue
             
             id_ = self.idx_to_id.get(idx)
-            if id_:
-                metadata = self.metadata_store.get(id_, {})
-                search_results.append(SearchResult(
-                    id=id_,
-                    score=float(dist),
-                    metadata=metadata,
-                    text=metadata.get("text", "")
-                ))
+            if not id_:
+                continue
+
+            metadata = self.metadata_store.get(id_, {})
+
+            # Apply filters
+            if filter_dict:
+                match = True
+                for key, value in filter_dict.items():
+                    if metadata.get(key) != value:
+                        match = False
+                        break
+                if not match:
+                    continue
+
+            search_results.append(SearchResult(
+                id=id_,
+                score=float(dist),
+                metadata=metadata,
+                text=metadata.get("text", "")
+            ))
+
+            if len(search_results) >= top_k:
+                break
         
         return search_results
     
@@ -313,14 +370,13 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
-        # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        # Save metadata as JSON for security and portability
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
                 'idx_to_id': self.idx_to_id

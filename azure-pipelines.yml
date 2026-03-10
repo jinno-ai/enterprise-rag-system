@@ -24,7 +24,6 @@ steps:
     export OPENAI_API_KEY="dummy_key_for_ci"
     pytest tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
   displayName: 'Run tests'
-  continueOnError: true
 
 - task: PublishTestResults@2
   condition: succeededOrFailed()
