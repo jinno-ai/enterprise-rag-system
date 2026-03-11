@@ -7,29 +7,28 @@ pool:
 steps:
 - task: UsePythonVersion@0
   inputs:
-    versionSpec: '3.10'
-  displayName: 'Use Python 3.10'
+    versionSpec: '3.11'
+  displayName: 'Use Python 3.11'
 
 - script: |
     python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
-    python -m pip install pytest pytest-cov
+    pip install -r requirements.txt
   displayName: 'Install dependencies'
 
 - script: |
-    mkdir -p junit
+    mkdir -p $(System.DefaultWorkingDirectory)/junit
     export OPENAI_API_KEY=dummy
-    python -m pytest tests/unit tests/integration --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
+    pytest tests/unit tests/integration --junitxml=$(System.DefaultWorkingDirectory)/junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
   displayName: 'Run tests'
 
 - task: PublishTestResults@2
   condition: succeededOrFailed()
   inputs:
-    testResultsFiles: '**/test-results.xml'
-    testRunTitle: 'Python 3.10 Tests'
+    testResultsFiles: '$(System.DefaultWorkingDirectory)/junit/test-results.xml'
+    testRunTitle: 'Python 3.11 Tests'
 
 - task: PublishCodeCoverageResults@1
   inputs:
     codeCoverageTool: Cobertura
-    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-    reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+    reportDirectory: '$(System.DefaultWorkingDirectory)/htmlcov'
