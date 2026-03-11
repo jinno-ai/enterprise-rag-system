@@ -14,6 +14,13 @@ __pycache__/
 data/
 *.index
 
+# Testing and Coverage
+.coverage
+coverage.xml
+htmlcov/
+junit/
+.pytest_cache/
+
 # BMAD Method
 _bmad-output/
 _bmad/
