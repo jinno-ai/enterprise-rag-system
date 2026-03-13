@@ -58,9 +58,11 @@ def test_rag_pipeline_initialization(mock_retriever):
 
 
 @patch('app.services.rag_pipeline.openai')
-def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_results, mock_llm_response):
+@patch('app.services.rag_pipeline.time.time')
+def test_rag_pipeline_query(mock_time, mock_openai, mock_retriever, sample_retrieval_results, mock_llm_response):
     """Test RAG pipeline query"""
     # Setup mocks
+    mock_time.side_effect = [1000.0, 1000.1]
     mock_retriever.retrieve.return_value = sample_retrieval_results
     mock_openai.chat.completions.create.return_value.choices = [
         Mock(message=Mock(content=mock_llm_response['answer']))
