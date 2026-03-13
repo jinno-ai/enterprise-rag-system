@@ -140,14 +140,16 @@ async def upload_document(
         from app.core.vectordb import get_vector_db
         
         # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
+        filename = file.filename or "unknown"
+        suffix = Path(filename).suffix
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
             content = await file.read()
             tmp_file.write(content)
             tmp_path = tmp_file.name
         
         try:
             # Load document
-            file_ext = Path(file.filename).suffix.lower()
+            file_ext = Path(filename).suffix.lower()
             
             if file_ext == '.pdf':
                 documents = DocumentLoader.load_pdf(tmp_path)

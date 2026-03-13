@@ -119,26 +119,26 @@ class HybridRetriever:
         """Perform hybrid search combining semantic and keyword search"""
         # Perform both searches
         semantic_results = self.semantic_search(query, top_k=top_k * 2, filter_dict=filter_dict)
-        keyword_results = self.keyword_search(query, top_k=top_k * 2) if self.bm25_index else []
+        keyword_results: List[Dict[str, Any]] = self.keyword_search(query, top_k=top_k * 2) if self.bm25_index else []
         
         # Combine results using Reciprocal Rank Fusion (RRF)
-        combined_scores = {}
+        combined_scores: Dict[str, Dict[str, Any]] = {}
         
         # Add semantic search scores
         for rank, result in enumerate(semantic_results):
             doc_id = result.id
             rrf_score = 1.0 / (rank + 60)  # RRF formula
             combined_scores[doc_id] = {
-                'score': self.alpha * rrf_score,
-                'text': result.text,
-                'metadata': result.metadata,
+                'score': float(self.alpha * rrf_score),
+                'text': str(result.text),
+                'metadata': dict(result.metadata),
                 'semantic_rank': rank + 1
             }
         
         # Add keyword search scores
         if keyword_results:
-            for rank, result in enumerate(keyword_results):
-                doc = result['document']
+            for rank, kw_result in enumerate(keyword_results):
+                doc = kw_result['document']
                 doc_id = doc.doc_id
                 rrf_score = 1.0 / (rank + 60)
                 
@@ -147,9 +147,9 @@ class HybridRetriever:
                     combined_scores[doc_id]['keyword_rank'] = rank + 1
                 else:
                     combined_scores[doc_id] = {
-                        'score': (1 - self.alpha) * rrf_score,
-                        'text': doc.content,
-                        'metadata': doc.metadata,
+                        'score': float((1 - self.alpha) * rrf_score),
+                        'text': str(doc.content),
+                        'metadata': dict(doc.metadata),
                         'keyword_rank': rank + 1
                     }
         
@@ -164,10 +164,10 @@ class HybridRetriever:
         final_results = []
         for doc_id, data in sorted_results:
             final_results.append(RetrievalResult(
-                document=data['text'],
-                score=data['score'],
-                metadata=data['metadata'],
-                source=data['metadata'].get('source', 'unknown')
+                document=str(data['text']),
+                score=float(data['score']),
+                metadata=dict(data['metadata']),
+                source=str(data['metadata'].get('source', 'unknown'))
             ))
         
         return final_results

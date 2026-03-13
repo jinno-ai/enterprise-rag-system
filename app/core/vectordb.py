@@ -5,6 +5,7 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -22,6 +23,7 @@ class SearchResult:
 
 class VectorDB(ABC):
     """Abstract base class for vector database operations"""
+    index: Any = None
     
     @abstractmethod
     def connect(self) -> None:
@@ -202,10 +204,21 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import pickle
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata if exists
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -229,6 +242,19 @@ class FAISSVectorDB(VectorDB):
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
     
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Alias for upsert (backward compatibility)"""
+        ids = [f"doc_{i}_{hash(doc)}" for i, doc in enumerate(documents)]
+        # Ensure text is in metadata
+        for doc, meta in zip(documents, metadatas):
+            meta["text"] = doc
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
     def upsert(
         self,
         vectors: List[List[float]],
@@ -240,6 +266,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -284,6 +311,17 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filtering if provided
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),

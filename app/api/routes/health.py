@@ -3,7 +3,7 @@ Health check endpoints
 """
 
 from fastapi import APIRouter
-from typing import Dict
+from typing import Dict, Any
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ async def health_check() -> Dict[str, str]:
 
 
 @router.get("/health/detailed")
-async def detailed_health_check() -> Dict[str, Dict[str, str]]:
+async def detailed_health_check() -> Dict[str, Any]:
     """Detailed health check with service status"""
     return {
         "status": "healthy",

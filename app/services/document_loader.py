@@ -15,7 +15,7 @@ class Document:
     """Document representation"""
     content: str
     metadata: Dict[str, Any]
-    doc_id: Optional[str] = None
+    doc_id: str = ""
     
     def __post_init__(self):
         """Generate document ID if not provided"""
