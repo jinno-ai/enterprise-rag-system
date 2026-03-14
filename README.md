@@ -47,6 +47,9 @@ Modern enterprises face critical challenges in knowledge management:
   - Context compression with LLMChain
   - Re-ranking with Cross-Encoder models
   - Multi-query retrieval for comprehensive answers
+  - **Query Autocorrect** - Automatic spelling correction and query suggestion
+  - Fuzzy matching for typo detection
+  - Domain-specific term preservation
 
 - **⚡ Performance Optimized**
   - Vector database caching and indexing
@@ -709,11 +712,72 @@ groups:
 | Query | `POST /api/v1/query/` | `POST /api/v2/query/` |
 | Streaming Query | `POST /api/v1/query/stream` | `POST /api/v2/query/stream` |
 | Batch Query | `POST /api/v1/query/batch` | `POST /api/v2/query/batch` |
+| Metadata Search | `POST /api/v1/query/metadata` | `POST /api/v2/query/metadata` |
+| Metadata Values | `POST /api/v1/query/metadata/values` | `POST /api/v2/query/metadata/values` |
 | Health | `GET /api/v1/query/health` | `GET /api/v2/query/health` |
 | Ingest | `POST /api/v1/ingest/` | `POST /api/v2/ingest/` |
 | Documents | `GET /api/v1/documents/` | `GET /api/v2/documents/` |
 
 **Note**: v1 API remains fully supported and maintained. New applications should consider using v2 for enhanced features.
+
+#### Query Autocorrect API
+
+The Query Autocorrect feature automatically corrects spelling mistakes in user queries before processing, improving search accuracy and user experience.
+
+**Enable Autocorrect:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "waht is the compnay policy on remoot work",
+    "enable_autocorrect": true,
+    "top_k": 5
+  }'
+```
+
+**How It Works:**
+
+1. **Spell Correction**: Automatically detects and corrects common typos
+   - "remoot work" → "remote work"
+   - "compnay policy" → "company policy"
+   - "helath insurance" → "health insurance"
+
+2. **Fuzzy Matching**: Uses advanced fuzzy matching algorithms to detect misspellings
+   - Handles transpositions (e.g., "compnay" → "company")
+   - Handles missing letters (e.g., "pollicy" → "policy")
+   - Handles extra letters (e.g., "emploee" → "employee")
+
+3. **Domain-Specific Terms**: Preserves technical terms and product names
+   - "Kubernetes", "Docker", "Pinecone" are not corrected
+   - Custom domain terms can be added via the API
+
+4. **Case Preservation**: Maintains the original case pattern
+   - "Hello Wrold" → "Hello World"
+   - "HELLO WROLD" → "HELLO WORLD"
+
+**Parameters:**
+- `enable_autocorrect` (optional): Enable spell correction (default: `false`)
+- `query`: The user query (may contain typos)
+
+**Benefits:**
+- 🎯 **Improved Accuracy**: Corrects typos before search, retrieving better results
+- ⚡ **Better UX**: Users don't need to manually correct their queries
+- 🔧 **Zero Configuration**: Works out-of-the-box with common misspellings
+- 🏢 **Enterprise-Ready**: Domain-specific term preservation for technical vocabulary
+
+**Example:**
+```bash
+# Without autocorrect
+curl -X POST http://localhost:8000/api/v1/query/ \
+  -d '{"query": "remoot work policy"}'
+# May return poor results due to typo
+
+# With autocorrect
+curl -X POST http://localhost:8000/api/v1/query/ \
+  -d '{"query": "remoot work policy", "enable_autocorrect": true}'
+# Query is corrected to "remote work policy" before processing
+# Returns accurate results
+```
 
 #### Streaming Query API
 
@@ -926,6 +990,127 @@ curl -X POST http://localhost:8000/api/v2/query/batch \
 - `queries` (required): Array of query strings (1-100 queries)
 - `collection` (optional): Target collection for all queries
 - `top_k` (optional): Number of documents to retrieve per query (default: 5, range: 1-20)
+
+#### Metadata Search API
+
+The Metadata Search API provides advanced filtering capabilities for searching documents based on their metadata fields. This enables precise filtering by document properties such as department, category, date, author, and custom fields.
+
+**Supported Filter Operators:**
+- `eq` - Equals
+- `ne` - Not equals
+- `gt` - Greater than
+- `gte` - Greater than or equal
+- `lt` - Less than
+- `lte` - Less than or equal
+- `in` - In list
+- `nin` - Not in list
+- `contains` - Contains substring (case-insensitive)
+- `regex` - Regular expression match
+- `exists` - Field exists
+
+**Simple Filter Example:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/metadata \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "remote work policy",
+    "filters": {
+      "department": "HR"
+    },
+    "top_k": 5
+  }'
+```
+
+**Complex Filter Example:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/metadata \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "company policies",
+    "filters": {
+      "category": {"operator": "eq", "value": "policy"},
+      "year": {"operator": "gte", "value": 2023}
+    },
+    "top_k": 10,
+    "match_all": true
+  }'
+```
+
+**OR Logic (Match Any Filter):**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/metadata \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "employee benefits",
+    "filters": {
+      "department": "HR"
+    },
+    "match_all": false
+  }'
+```
+
+**Response Example:**
+```json
+{
+  "results": [
+    {
+      "id": "doc1",
+      "score": 0.95,
+      "metadata": {
+        "filename": "policy_hr.pdf",
+        "department": "HR",
+        "year": 2024,
+        "category": "policy"
+      },
+      "text": "HR policy document about remote work",
+      "matched_filters": ["department", "category"]
+    }
+  ],
+  "total_found": 1,
+  "query": "company policies"
+}
+```
+
+**Get Unique Metadata Values:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/metadata/values \
+  -H "Content-Type: application/json" \
+  -d '{
+    "field": "department",
+    "query": "company policy",
+    "top_k": 100
+  }'
+```
+
+**Response:**
+```json
+{
+  "field": "department",
+  "values": ["Finance", "HR", "IT", "Marketing", "Sales"],
+  "total": 5
+}
+```
+
+**Key Features:**
+- **Flexible Filtering**: Support for multiple filter operators (equality, comparison, string matching)
+- **AND/OR Logic**: Control whether all filters must match (AND) or any filter can match (OR)
+- **Field Discovery**: Get unique values for any metadata field to build filter UIs
+- **Semantic + Metadata**: Combines semantic search with metadata filtering for best results
+- **Performance**: Efficient filtering with minimal overhead
+
+**Use Cases:**
+- Filter documents by department, category, or date range
+- Find documents from specific authors or with specific tags
+- Search within document collections that match certain criteria
+- Build advanced search UIs with filter dropdowns
+- Implement access control based on document metadata
+
+**Parameters:**
+- `query` (required): Search query string
+- `filters` (required): Metadata filters (see examples above)
+- `top_k` (optional): Number of results (default: 5, range: 1-20)
+- `match_all` (optional): If True, all filters must match (AND). If False, any filter can match (OR) (default: true)
+- `use_semantic` (optional): Use semantic search (default: true)
 
 #### Webhook Notifications
 

@@ -4,6 +4,7 @@ Query API Routes
 This module defines API endpoints for querying the RAG system.
 """
 
+import logging
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -13,6 +14,10 @@ from app.services.rag_pipeline import RAGResponse, RAGPipeline
 from app.api.dependencies import get_rag_pipeline
 from app.core.rate_limit import limiter
 from app.services.streaming import create_streaming_response
+from app.services.metadata_search import MetadataSearchService, MetadataFilter, FilterOperator
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -26,6 +31,7 @@ class QueryRequest(BaseModel):
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
+    enable_autocorrect: bool = Field(False, description="Enable query spell correction")
 
 
 class QueryResponse(BaseModel):
@@ -109,9 +115,29 @@ async def query(
         QueryResponse with answer and sources
     """
     try:
+        # Apply autocorrect if enabled
+        from app.services.autocorrect import AutocorrectService
+
+        query_to_process = query_req.query
+        if query_req.enable_autocorrect:
+            autocorrect_service = AutocorrectService()
+            autocorrect_result = autocorrect_service.correct(query_req.query)
+            query_to_process = autocorrect_result.corrected
+
+            # Log corrections if any were made
+            if autocorrect_result.was_corrected:
+                logger.info(
+                    f"Query autocorrected: '{query_req.query}' -> '{query_to_process}'",
+                    extra={
+                        "original": query_req.query,
+                        "corrected": query_to_process,
+                        "corrections": autocorrect_result.corrections
+                    }
+                )
+
         # Execute query
         result = await pipeline.query(
-            question=query_req.query,
+            question=query_to_process,
             top_k=query_req.top_k,
             use_hybrid=query_req.use_hybrid,
             filter_dict=query_req.filters,
@@ -318,3 +344,199 @@ async def health_check() -> Dict[str, str]:
         "status": "healthy",
         "service": "RAG Query API"
     }
+
+
+class MetadataSearchRequest(BaseModel):
+    """Request model for metadata search endpoint"""
+    query: str = Field(..., description="Search query", min_length=1)
+    filters: Dict[str, Any] = Field(..., description="Metadata filters")
+    top_k: int = Field(5, description="Number of results", ge=1, le=20)
+    match_all: bool = Field(True, description="If True, all filters must match (AND). If False, any filter can match (OR)")
+    use_semantic: bool = Field(True, description="Use semantic search")
+
+
+class MetadataSearchResponse(BaseModel):
+    """Response model for metadata search endpoint"""
+    results: List[Dict[str, Any]]
+    total_found: int
+    query: str
+
+
+@router.post("/metadata", response_model=MetadataSearchResponse, status_code=status.HTTP_200_OK)
+async def search_by_metadata(request: MetadataSearchRequest) -> MetadataSearchResponse:
+    """
+    Search documents with advanced metadata filtering
+
+    This endpoint provides flexible metadata filtering capabilities with support for:
+    - Equality operators: eq, ne
+    - Comparison operators: gt, gte, lt, lte
+    - List operators: in, nin
+    - String operators: contains, regex
+    - Existence operator: exists
+
+    Args:
+        request: Metadata search request with query and filters
+
+    Returns:
+        MetadataSearchResponse with filtered results
+
+    Examples:
+        Simple equality filter:
+        ```json
+        {
+            "query": "company policy",
+            "filters": {"department": "HR"}
+        }
+        ```
+
+        Complex filter with operators:
+        ```json
+        {
+            "query": "remote work",
+            "filters": {
+                "department": {"operator": "eq", "value": "HR"},
+                "year": {"operator": "gte", "value": 2023}
+            }
+        }
+        ```
+
+        OR logic (match any filter):
+        ```json
+        {
+            "query": "benefits",
+            "filters": {
+                "category": "compensation"
+            },
+            "match_all": false
+        }
+        ```
+    """
+    try:
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
+        # Create metadata search service
+        metadata_service = MetadataSearchService(
+            vector_db=pipeline.retriever.vector_db,
+            embedding_model=pipeline.embedding_model
+        )
+
+        # Build filters from dictionary
+        filter_list = metadata_service.build_filter_from_dict(request.filters)
+
+        if not filter_list:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid filters provided"
+            )
+
+        # Perform metadata search
+        results = metadata_service.search_by_metadata(
+            query=request.query,
+            filters=filter_list,
+            top_k=request.top_k,
+            match_all=request.match_all,
+            use_semantic=request.use_semantic
+        )
+
+        # Convert results to response format
+        response_data = [
+            {
+                "id": r.id,
+                "score": r.score,
+                "metadata": r.metadata,
+                "text": r.text,
+                "matched_filters": r.matched_filters
+            }
+            for r in results
+        ]
+
+        return MetadataSearchResponse(
+            results=response_data,
+            total_found=len(response_data),
+            query=request.query
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid filter specification: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Metadata search failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Metadata search failed: {str(e)}"
+        )
+
+
+class MetadataValuesRequest(BaseModel):
+    """Request model for getting unique metadata values"""
+    field: str = Field(..., description="Metadata field name")
+    query: Optional[str] = Field(None, description="Optional query to filter results")
+    top_k: int = Field(100, description="Number of documents to scan", ge=1, le=1000)
+
+
+class MetadataValuesResponse(BaseModel):
+    """Response model for unique metadata values"""
+    field: str
+    values: List[Any]
+    total: int
+
+
+@router.post("/metadata/values", response_model=MetadataValuesResponse, status_code=status.HTTP_200_OK)
+async def get_metadata_values(request: MetadataValuesRequest) -> MetadataValuesResponse:
+    """
+    Get unique values for a metadata field
+
+    This endpoint helps discover available metadata values for filtering.
+    Useful for building filter UIs or understanding document metadata.
+
+    Args:
+        request: Request with field name and optional query
+
+    Returns:
+        List of unique values for the specified field
+
+    Example:
+        ```json
+        {
+            "field": "department",
+            "query": "company policy"
+        }
+        ```
+    """
+    try:
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
+        # Create metadata search service
+        metadata_service = MetadataSearchService(
+            vector_db=pipeline.retriever.vector_db,
+            embedding_model=pipeline.embedding_model
+        )
+
+        # Get unique values
+        values = metadata_service.get_unique_metadata_values(
+            field=request.field,
+            query=request.query,
+            top_k=request.top_k
+        )
+
+        return MetadataValuesResponse(
+            field=request.field,
+            values=values,
+            total=len(values)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get metadata values: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get metadata values: {str(e)}"
+        )
