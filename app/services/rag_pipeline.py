@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.core.cache import CacheManager
 
 
+
 settings = get_settings()
 logger = get_logger(__name__)
 
@@ -337,7 +338,7 @@ Answer:"""
                 response = await self.query(question, top_k=top_k, collection=collection, **kwargs)
                 responses.append(response)
             except Exception as e:
-                logger.error(f"Error processing question '{question}': {e}")
+                logger.error(f"Error processing question '{question}': {e}", exc_info=True)
                 responses.append(RAGResponse(
                     answer=f"Error: {str(e)}",
                     sources=[],

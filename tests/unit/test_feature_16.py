@@ -253,6 +253,39 @@ class TestStreamingResponseGenerator:
     @pytest.mark.asyncio
     async def test_stream_response_with_token_streaming(self, mock_pipeline):
         """Test streaming with token-level streaming enabled"""
+        # Mock the _call_llm_streaming method to simulate OpenAI streaming
+        mock_stream_result = []
+
+        def mock_streaming_call(prompt):
+            """Create a mock OpenAI streaming response"""
+            class MockChunk:
+                def __init__(self, content):
+                    self.choices = [MockDelta(content)]
+
+            class MockDelta:
+                def __init__(self, content):
+                    self.content = content
+                    self.delta = self
+
+            class MockStream:
+                def __init__(self):
+                    self.chunks = [
+                        MockChunk("This "),
+                        MockChunk("is "),
+                        MockChunk("a "),
+                        MockChunk("test "),
+                        MockChunk("answer.")
+                    ]
+                    self.usage = Mock()
+                    self.usage.total_tokens = 100
+
+                def __iter__(self):
+                    return iter(self.chunks)
+
+            return MockStream()
+
+        mock_pipeline._call_llm_streaming = mock_streaming_call
+
         generator = StreamingResponseGenerator(
             pipeline=mock_pipeline,
             query="Test query",
@@ -268,7 +301,7 @@ class TestStreamingResponseGenerator:
         generation_chunks = [c for c in chunks if '"type": "generation"' in c]
 
         # Should have multiple generation chunks due to token streaming
-        assert len(generation_chunks) > 0
+        assert len(generation_chunks) >= 5  # "This ", "is ", "a ", "test ", "answer."
 
     @pytest.mark.asyncio
     async def test_stream_response_error_handling(self, mock_pipeline):

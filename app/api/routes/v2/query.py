@@ -43,8 +43,10 @@ class QueryResponseV2(BaseModel):
 class BatchQueryRequestV2(BaseModel):
     """Enhanced request model for v2 batch query endpoint"""
     queries: List[str] = Field(..., description="List of questions to ask")
-    collection: Optional[str] = None
+    collection: Optional[str] = Field(None, description="Collection/namespace to search in")
     top_k: int = Field(5, ge=1, le=20)
+    use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
     include_metadata: bool = Field(False, description="Include metadata in responses")
 
 
@@ -128,7 +130,9 @@ async def batch_query_v2(request: BatchQueryRequestV2) -> List[QueryResponseV2]:
         # Execute batch query
         results = pipeline.batch_query(
             questions=request.queries,
-            top_k=request.top_k
+            top_k=request.top_k,
+            use_hybrid=request.use_hybrid,
+            filter_dict=request.filters
         )
 
         responses = []

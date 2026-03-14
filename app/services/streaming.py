@@ -7,9 +7,9 @@ It enables real-time streaming of query results for better user experience.
 
 import json
 import asyncio
-from typing import AsyncGenerator, Dict, Any, Optional
-from dataclasses import dataclass, asdict
 import logging
+from typing import AsyncGenerator, Dict, Any, Optional
+from dataclasses import dataclass
 
 from app.services.rag_pipeline import RAGPipeline, RAGResponse, RetrievalResult
 
@@ -62,6 +62,32 @@ class StreamingResponseGenerator:
         self.filter_dict = filter_dict
         self.enable_token_streaming = enable_token_streaming
 
+    def _build_metadata_chunk(
+        self,
+        retrieval_results: list,
+        answer: str,
+        tokens_used: int
+    ) -> str:
+        """Helper to build metadata chunk (DRY principle)"""
+        return StreamChunk(
+            type="metadata",
+            data={
+                "confidence": self.pipeline._calculate_confidence(
+                    retrieval_results,
+                    answer
+                ),
+                "tokens_used": tokens_used,
+                "sources": [
+                    {
+                        "document": r.document,
+                        "score": r.score,
+                        "metadata": r.metadata
+                    }
+                    for r in retrieval_results
+                ]
+            }
+        ).to_sse()
+
     async def stream_response(self) -> AsyncGenerator[str, None]:
         """
         Stream the complete RAG response
@@ -101,9 +127,10 @@ class StreamingResponseGenerator:
             ).to_sse()
 
             # Stage 2: Build context and prompt
+            # Note: compressor.compress() requires query as first argument
             context = self.pipeline.compressor.compress(
-                retrieval_results,
-                max_tokens=4000
+                self.query,  # Add query parameter
+                retrieval_results
             )
 
             prompt = self.pipeline._build_prompt(self.query, context)
@@ -115,8 +142,8 @@ class StreamingResponseGenerator:
             ).to_sse()
 
             if self.enable_token_streaming:
-                # Stream generation token by token (simulated for standard OpenAI API)
-                async for chunk in self._stream_generation(prompt, retrieval_results):
+                # Use real streaming with OpenAI API
+                async for chunk in self._stream_generation_real(prompt, retrieval_results):
                     yield chunk
             else:
                 # Non-streaming generation (fallback)
@@ -130,24 +157,11 @@ class StreamingResponseGenerator:
                 ).to_sse()
 
                 # Send final metadata
-                yield StreamChunk(
-                    type="metadata",
-                    data={
-                        "confidence": self.pipeline._calculate_confidence(
-                            retrieval_results,
-                            response['answer']
-                        ),
-                        "tokens_used": response['tokens_used'],
-                        "sources": [
-                            {
-                                "document": r.document,
-                                "score": r.score,
-                                "metadata": r.metadata
-                            }
-                            for r in retrieval_results
-                        ]
-                    }
-                ).to_sse()
+                yield self._build_metadata_chunk(
+                    retrieval_results,
+                    response['answer'],
+                    response['tokens_used']
+                )
 
             # Stage 4: Done signal
             yield StreamChunk(type="done").to_sse()
@@ -159,56 +173,90 @@ class StreamingResponseGenerator:
                 content=str(e)
             ).to_sse()
 
-    async def _stream_generation(
+    async def _stream_generation_real(
         self,
         prompt: str,
         retrieval_results: list
     ) -> AsyncGenerator[str, None]:
         """
-        Stream LLM generation token by token
+        Stream LLM generation token by token using REAL OpenAI streaming
 
-        Note: This is a simulated streaming for standard OpenAI API.
-        For true token streaming, you would use the streaming=True parameter
-        in the OpenAI API call.
+        This uses OpenAI's native streaming API (stream=True) to get
+        tokens as they're generated, providing actual streaming benefit.
         """
-        # Run LLM call in thread pool to avoid blocking
-        response = await asyncio.to_thread(
-            self.pipeline._call_llm,
-            prompt
-        )
+        try:
+            import openai
 
-        answer = response['answer']
+            # Run streaming LLM call in thread pool to avoid blocking event loop
+            stream = await asyncio.to_thread(
+                self._call_llm_streaming,
+                prompt
+            )
 
-        # Simulate token streaming by sending chunks
-        chunk_size = 20  # characters per chunk
-        for i in range(0, len(answer), chunk_size):
-            chunk = answer[i:i + chunk_size]
-            yield StreamChunk(
-                type="generation",
-                content=chunk
+            full_answer = []
+            tokens_used = 0
+
+            # Process streaming response
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    token = chunk.choices[0].delta.content
+                    full_answer.append(token)
+
+                    # Stream each token immediately
+                    yield StreamChunk(
+                        type="generation",
+                        content=token
+                    ).to_sse()
+
+            # Get token usage from final chunk
+            if hasattr(stream, 'usage') and stream.usage:
+                tokens_used = stream.usage.total_tokens
+
+            # Send final metadata with complete answer
+            yield self._build_metadata_chunk(
+                retrieval_results,
+                ''.join(full_answer),
+                tokens_used
             ).to_sse()
-            # Small delay to simulate streaming
-            await asyncio.sleep(0.01)
 
-        # Send final metadata
-        yield StreamChunk(
-            type="metadata",
-            data={
-                "confidence": self.pipeline._calculate_confidence(
-                    retrieval_results,
-                    answer
-                ),
-                "tokens_used": response['tokens_used'],
-                "sources": [
+        except Exception as e:
+            logger.error(f"Error in LLM streaming: {e}", exc_info=True)
+            yield StreamChunk(
+                type="error",
+                content=f"LLM streaming error: {str(e)}"
+            ).to_sse()
+
+    def _call_llm_streaming(self, prompt: str):
+        """
+        Call LLM with streaming enabled (runs in thread pool)
+
+        This is a synchronous wrapper around OpenAI's streaming API
+        that gets executed in a thread pool to avoid blocking.
+        """
+        import openai
+
+        try:
+            stream = openai.chat.completions.create(
+                model=self.pipeline.llm_model,
+                messages=[
                     {
-                        "document": r.document,
-                        "score": r.score,
-                        "metadata": r.metadata
+                        "role": "system",
+                        "content": "You are a helpful assistant that provides accurate answers based on given context."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
                     }
-                    for r in retrieval_results
-                ]
-            }
-        ).to_sse()
+                ],
+                temperature=self.pipeline.temperature,
+                max_tokens=self.pipeline.max_tokens,
+                stream=True  # REAL STREAMING
+            )
+
+            return stream
+
+        except Exception as e:
+            raise RuntimeError(f"LLM streaming call failed: {e}")
 
 
 async def create_streaming_response(

@@ -40,8 +40,10 @@ class QueryResponse(BaseModel):
 class BatchQueryRequest(BaseModel):
     """Request model for batch query endpoint"""
     queries: List[str] = Field(..., description="List of questions to ask")
-    collection: Optional[str] = None
-    top_k: int = Field(5, ge=1, le=20)
+    collection: Optional[str] = Field(None, description="Collection/namespace to search in")
+    top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
+    use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
 
 
 @router.post(
@@ -195,7 +197,9 @@ async def batch_query(
         results = await pipeline.batch_query(
             questions=batch_req.queries,
             top_k=batch_req.top_k,
-            collection=batch_req.collection or "default"
+            collection=batch_req.collection or "default",
+            use_hybrid=batch_req.use_hybrid,
+            filter_dict=batch_req.filters
         )
 
         responses = []
@@ -224,7 +228,7 @@ async def query_stream(request: QueryRequest):
 
     This endpoint streams the query response in real-time, providing:
     - Retrieval status and results
-    - Progressive answer generation
+    - Progressive answer generation (token-by-token using real OpenAI streaming)
     - Final metadata (confidence, tokens, sources)
 
     Args:
@@ -250,20 +254,35 @@ async def query_stream(request: QueryRequest):
     """
     try:
         from app.main import get_rag_pipeline
+        from fastapi import Request
 
         pipeline = get_rag_pipeline()
 
-        # Create streaming response
+        # Create streaming response with client disconnection handling
         async def generate():
-            async for chunk in create_streaming_response(
-                pipeline=pipeline,
-                query=request.query,
-                top_k=request.top_k,
-                use_hybrid=request.use_hybrid,
-                filter_dict=request.filters,
-                enable_token_streaming=True
-            ):
-                yield chunk
+            try:
+                async for chunk in create_streaming_response(
+                    pipeline=pipeline,
+                    query=request.query,
+                    top_k=request.top_k,
+                    use_hybrid=request.use_hybrid,
+                    filter_dict=request.filters,
+                    enable_token_streaming=True
+                ):
+                    # Check if client disconnected (requires FastAPI Request object)
+                    # For now, we'll catch GeneratorExit when client disconnects
+                    yield chunk
+            except GeneratorExit:
+                # Client disconnected
+                logger.info("Stream closed by client")
+            except Exception as e:
+                logger.error(f"Error in stream generation: {e}")
+                # Yield error chunk before closing
+                from app.services.streaming import StreamChunk
+                yield StreamChunk(
+                    type="error",
+                    content=str(e)
+                ).to_sse()
 
         return StreamingResponse(
             generate(),
