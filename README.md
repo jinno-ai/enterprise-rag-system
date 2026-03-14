@@ -712,6 +712,7 @@ groups:
 | Query | `POST /api/v1/query/` | `POST /api/v2/query/` |
 | Streaming Query | `POST /api/v1/query/stream` | `POST /api/v2/query/stream` |
 | Batch Query | `POST /api/v1/query/batch` | `POST /api/v2/query/batch` |
+| Query Suggestions | `POST /api/v1/query/suggestions` | `POST /api/v2/query/suggestions` |
 | Metadata Search | `POST /api/v1/query/metadata` | `POST /api/v2/query/metadata` |
 | Metadata Values | `POST /api/v1/query/metadata/values` | `POST /api/v2/query/metadata/values` |
 | Health | `GET /api/v1/query/health` | `GET /api/v2/query/health` |
@@ -777,6 +778,114 @@ curl -X POST http://localhost:8000/api/v1/query/ \
   -d '{"query": "remoot work policy", "enable_autocorrect": true}'
 # Query is corrected to "remote work policy" before processing
 # Returns accurate results
+```
+
+#### Query Suggestion API
+
+The Query Suggestion feature provides intelligent query recommendations based on document content, user history, and trending queries across all users. This helps users formulate better queries and discover relevant information.
+
+**Get Query Suggestions:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/suggestions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "partial_query": "company policy",
+    "max_suggestions": 10,
+    "include_history": true,
+    "include_trending": true,
+    "user_id": "user123"
+  }'
+```
+
+**How It Works:**
+
+1. **Content-Based Suggestions**: Analyzes partial queries and suggests completions based on query templates
+   - Policy queries: "what is the company policy on", "policy for remote work"
+   - Procedure queries: "how do I", "procedure for", "steps to"
+   - Resource queries: "where can I find", "available resources for"
+   - General queries: "explain", "describe", "compare"
+
+2. **User History Tracking**: Remembers past queries for personalized suggestions
+   - Tracks query frequency and recency
+   - Provides relevant suggestions based on user's query patterns
+   - Maintains privacy with optional user identification
+
+3. **Trending Queries**: Shows popular queries across all users
+   - Identifies frequently asked questions
+   - Helps discover common information needs
+   - Updates in real-time as users interact with the system
+
+**Parameters:**
+- `partial_query` (optional): Partial query string for completion
+- `max_suggestions`: Maximum number of suggestions (default: 10, range: 1-50)
+- `include_history`: Include user's historical queries (default: true)
+- `include_trending`: Include trending queries (default: true)
+- `user_id` (optional): User identifier for personalized suggestions
+
+**Response Format:**
+```json
+{
+  "suggestions": [
+    {
+      "query": "company policy on remote work",
+      "score": 0.9,
+      "source": "content",
+      "frequency": 5,
+      "last_used": "2026-03-15T10:30:00Z",
+      "category": "policy"
+    },
+    {
+      "query": "company policy regarding vacation",
+      "score": 0.85,
+      "source": "history",
+      "frequency": 3,
+      "last_used": "2026-03-14T15:20:00Z",
+      "category": "policy"
+    }
+  ],
+  "total": 2
+}
+```
+
+**Benefits:**
+- 🎯 **Better Queries**: Helps users formulate effective queries
+- 📊 **Discovery**: Users discover relevant topics they might not have considered
+- ⚡ **Faster Answers**: Reduces query refinement cycles
+- 🏢 **Enterprise-Ready**: Privacy-focused with optional user identification
+- 📈 **Continuous Learning**: Suggestions improve as users interact with the system
+
+**Examples:**
+
+**Get completions for partial query:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/suggestions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "partial_query": "remote",
+    "max_suggestions": 10
+  }'
+```
+
+**Get personalized suggestions:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/suggestions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "partial_query": "policy",
+    "max_suggestions": 10,
+    "include_history": true,
+    "user_id": "john.doe@company.com"
+  }'
+```
+
+**Get trending queries:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/suggestions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "max_suggestions": 10,
+    "include_trending": true
+  }'
 ```
 
 #### Streaming Query API

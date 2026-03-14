@@ -15,6 +15,7 @@ from app.api.dependencies import get_rag_pipeline
 from app.core.rate_limit import limiter
 from app.services.streaming import create_streaming_response
 from app.services.metadata_search import MetadataSearchService, MetadataFilter, FilterOperator
+from app.services.suggestion import QuerySuggestionService, SuggestionRequest, get_suggestion_service
 
 
 logger = logging.getLogger(__name__)
@@ -539,4 +540,95 @@ async def get_metadata_values(request: MetadataValuesRequest) -> MetadataValuesR
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get metadata values: {str(e)}"
+        )
+
+
+class SuggestionRequestModel(BaseModel):
+    """Request model for query suggestion endpoint"""
+    partial_query: str = Field("", description="Partial query string for completion", min_length=0)
+    max_suggestions: int = Field(10, description="Maximum number of suggestions", ge=1, le=50)
+    include_history: bool = Field(True, description="Include user's historical queries")
+    include_trending: bool = Field(True, description="Include trending queries")
+    user_id: Optional[str] = Field(None, description="Optional user identifier for personalization")
+
+
+class SuggestionResponse(BaseModel):
+    """Response model for query suggestion endpoint"""
+    suggestions: List[Dict[str, Any]]
+    total: int
+
+
+@router.post("/suggestions", response_model=SuggestionResponse, status_code=status.HTTP_200_OK)
+async def get_suggestions(request: SuggestionRequestModel) -> SuggestionResponse:
+    """
+    Get intelligent query suggestions
+
+    This endpoint provides query suggestions based on:
+    - Content analysis: Completions based on query templates
+    - User history: Personalized suggestions from past queries
+    - Trending: Popular queries across all users
+
+    Args:
+        request: Suggestion request with parameters
+
+    Returns:
+        List of query suggestions with metadata
+
+    Examples:
+        Get completions for partial query:
+        ```json
+        {
+            "partial_query": "company policy",
+            "max_suggestions": 10
+        }
+        ```
+
+        Get personalized suggestions:
+        ```json
+        {
+            "partial_query": "remote",
+            "max_suggestions": 10,
+            "include_history": true,
+            "user_id": "user123"
+        }
+        ```
+
+        Get trending queries:
+        ```json
+        {
+            "max_suggestions": 10,
+            "include_trending": true
+        }
+        ```
+    """
+    try:
+        # Get suggestion service
+        suggestion_service = get_suggestion_service()
+
+        # Create suggestion request
+        suggestion_request = SuggestionRequest(
+            partial_query=request.partial_query,
+            max_suggestions=request.max_suggestions,
+            include_history=request.include_history,
+            include_trending=request.include_trending,
+            user_id=request.user_id
+        )
+
+        # Get suggestions
+        suggestions = suggestion_service.get_suggestions(suggestion_request)
+
+        logger.info(
+            f"Generated {len(suggestions)} suggestions for query: {request.partial_query[:50]}..."
+        )
+
+        return SuggestionResponse(
+            suggestions=suggestions,
+            total=len(suggestions)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate suggestions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate suggestions: {str(e)}"
         )
