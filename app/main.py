@@ -99,8 +99,54 @@ async def lifespan(app: FastAPI):
         app.state.rag_pipeline = _rag_pipeline
 
         logger.info("Starting background document processor...")
-        from app.services.document_processor import start_processor
+        from app.services.document_processor import start_processor, get_processor
         await start_processor()
+
+        # Initialize webhook service if enabled
+        if settings.webhook_enabled:
+            logger.info("Initializing webhook service...")
+            from app.services.webhook import start_webhook_service, WebhookEventType, get_webhook_service
+
+            webhook_service = await start_webhook_service(
+                timeout_seconds=settings.webhook_timeout_seconds,
+                max_retries=settings.webhook_max_retries,
+                retry_delay_seconds=settings.webhook_retry_delay_seconds
+            )
+
+            # Register webhook callback with document processor
+            processor = get_processor()
+
+            async def webhook_callback(result):
+                """Send webhook on document processing completion"""
+                if result.success:
+                    await webhook_service.send_event(
+                        event_type=WebhookEventType.DOCUMENT_PROCESSING_COMPLETED,
+                        task_id=result.task_id,
+                        data={
+                            "documents_processed": result.documents_processed,
+                            "chunks_created": result.chunks_created,
+                            "collection": result.collection,
+                            "processing_time_ms": result.processing_time_ms,
+                            "message": result.message
+                        },
+                        collection=result.collection
+                    )
+                else:
+                    await webhook_service.send_event(
+                        event_type=WebhookEventType.DOCUMENT_PROCESSING_FAILED,
+                        task_id=result.task_id,
+                        data={
+                            "error": result.error,
+                            "collection": result.collection,
+                            "message": result.message
+                        },
+                        collection=result.collection
+                    )
+
+            processor.register_callback(webhook_callback)
+            logger.info("Webhook service integrated with document processor")
+        else:
+            logger.info("Webhook service disabled (set WEBHOOK_ENABLED=true to enable)")
 
         logger.info("Enterprise RAG System ready!")
         _initialization_error = None
@@ -117,6 +163,12 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Enterprise RAG System...")
     from app.services.document_processor import stop_processor
     await stop_processor()
+
+    # Stop webhook service if it was started
+    if settings.webhook_enabled:
+        from app.services.webhook import stop_webhook_service
+        await stop_webhook_service()
+        logger.info("🔔 Webhook service stopped")
 
 
 # Create FastAPI app
