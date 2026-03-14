@@ -12,7 +12,7 @@ class TestSettings:
 
     def test_get_settings_singleton(self):
         """Test that get_settings returns cached instance"""
-        from app.config import get_settings
+        from app.core.config import get_settings
 
         settings1 = get_settings()
         settings2 = get_settings()
@@ -22,47 +22,44 @@ class TestSettings:
 
     def test_settings_default_values(self):
         """Test Settings default values"""
-        from app.config import Settings
+        from app.core.config import Settings
 
         settings = Settings()
 
-        assert settings.ENVIRONMENT == "development"
-        assert settings.DEBUG is False
-        assert settings.LOG_LEVEL == "INFO"
-        assert settings.EMBEDDING_MODEL == "text-embedding-ada-002"
-        assert settings.EMBEDDING_DIMENSION == 1536
-        assert settings.HYBRID_SEARCH_ALPHA == 0.5
-        assert settings.TOP_K_RESULTS == 5
+        assert settings.embedding_model == "text-embedding-ada-002"
+        assert settings.embedding_dimension == 1536
+        assert settings.hybrid_search_alpha == 0.5
+        assert settings.top_k_results == 5
+        assert settings.llm_model == "gpt-4-turbo-preview"
+        assert settings.llm_temperature == 0.7
+        assert settings.llm_max_tokens == 2048
 
     def test_settings_with_custom_values(self):
         """Test Settings with custom values"""
-        from app.config import Settings
+        from app.core.config import Settings
 
         settings = Settings(
-            ENVIRONMENT="production",
-            DEBUG=True,
-            OPENAI_API_KEY="test-key",
-            TOP_K_RESULTS=10
+            openai_api_key="test-key",
+            top_k_results=10,
+            debug=True
         )
 
-        assert settings.ENVIRONMENT == "production"
-        assert settings.DEBUG is True
-        assert settings.OPENAI_API_KEY == "test-key"
-        assert settings.TOP_K_RESULTS == 10
+        assert settings.openai_api_key == "test-key"
+        assert settings.top_k_results == 10
+        assert settings.debug is True
 
     def test_settings_from_env(self):
         """Test Settings loads from environment"""
-        from app.config import Settings
+        from app.core.config import Settings
 
         with patch.dict(os.environ, {
             'OPENAI_API_KEY': 'env-test-key',
-            'ENVIRONMENT': 'test',
             'DEBUG': 'true'
         }):
             # Note: Pydantic doesn't auto-load from env in tests without BaseSettings config
             # This tests the structure is correct
-            settings = Settings(OPENAI_API_KEY='env-test-key')
-            assert settings.OPENAI_API_KEY == 'env-test-key'
+            settings = Settings(openai_api_key='env-test-key')
+            assert settings.openai_api_key == 'env-test-key'
 
 
 class TestSchemas:

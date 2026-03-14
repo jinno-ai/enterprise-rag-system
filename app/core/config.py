@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = Field(3600, env="CACHE_TTL_SECONDS")
     max_workers: int = Field(4, env="MAX_WORKERS")
 
+    # Compression
+    compression_minimum_size: int = Field(500, env="COMPRESSION_MINIMUM_SIZE")
+    compression_level: int = Field(6, env="COMPRESSION_LEVEL")
+    
     # Monitoring
     langsmith_api_key: Optional[str] = Field(None, env="LANGSMITH_API_KEY")
     langsmith_project: str = Field("enterprise-rag", env="LANGSMITH_PROJECT")

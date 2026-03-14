@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import os
+import json
 import numpy as np
 from dataclasses import dataclass
 import os
@@ -263,7 +264,7 @@ class FAISSVectorDB(VectorDB):
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
     
     def connect(self) -> None:
-        """Load FAISS index from disk"""
+        """Load FAISS index from disk with backward compatibility for pickle format"""
         try:
             import faiss
             import os

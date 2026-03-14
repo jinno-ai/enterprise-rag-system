@@ -5,10 +5,50 @@ Document ingestion endpoints
 from fastapi import APIRouter, HTTPException, Request
 from typing import Dict
 from datetime import datetime
+from pathlib import Path
+import os
 
 from app.core.rate_limit import limiter
 
 router = APIRouter()
+
+
+def validate_path_safety(file_path: str, allowed_base_dir: str = None) -> bool:
+    """
+    Validate that a path doesn't contain path traversal attempts.
+
+    Args:
+        file_path: The path to validate
+        allowed_base_dir: Optional base directory that the path must be within
+
+    Returns:
+        True if path is safe, False otherwise
+
+    Raises:
+        HTTPException: If path is unsafe
+    """
+    # Check for path traversal patterns (only block ".." for actual traversal)
+    if ".." in file_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid path: path traversal detected"
+        )
+
+    # Resolve the absolute path
+    resolved_path = Path(file_path).resolve()
+
+    # If base directory is specified, ensure path is within it
+    if allowed_base_dir:
+        base_dir = Path(allowed_base_dir).resolve()
+        try:
+            resolved_path.relative_to(base_dir)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid path: path must be within {allowed_base_dir}"
+            )
+
+    return True
 
 
 @router.post("/ingest")
@@ -26,6 +66,9 @@ async def ingest_documents(request: Request, source_path: str, collection: str =
         Ingestion status
     """
     try:
+        # Validate path safety
+        validate_path_safety(source_path)
+
         # Mock implementation
         return {
             "status": "success",
@@ -35,6 +78,8 @@ async def ingest_documents(request: Request, source_path: str, collection: str =
             "collection": collection,
             "timestamp": datetime.now().isoformat()
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -118,10 +118,16 @@ def ingest_command(args):
     embeddings = embedding_model.embed_texts([chunk.text for chunk in chunks])
 
     print("💾 Indexing in vector database...")
-    vector_db.add_documents(
-        documents=[chunk.text for chunk in chunks],
-        embeddings=embeddings,
-        metadatas=[chunk.metadata for chunk in chunks]
+    # Prepare metadata with text included
+    ids = [chunk.doc_id for chunk in chunks]
+    metadatas_with_text = [
+        {**chunk.metadata, "text": chunk.text}
+        for chunk in chunks
+    ]
+    vector_db.upsert(
+        vectors=embeddings,
+        ids=ids,
+        metadata=metadatas_with_text
     )
 
     print(f"✅ Successfully indexed {len(chunks)} chunks")

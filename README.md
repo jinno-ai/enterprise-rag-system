@@ -82,9 +82,19 @@ Modern enterprises face critical challenges in knowledge management:
 ![Demo GIF](docs/images/demo.gif)
 
 ### API Usage
+
+#### API Versioning
+
+The Enterprise RAG System supports API versioning to ensure backward compatibility while enabling new features:
+
+- **v1 API** (`/api/v1/*`): Stable, production-ready API with full backward compatibility
+- **v2 API** (`/api/v2/*`): Enhanced API with additional features (query IDs, timestamps, metadata)
+
+#### v1 API Example
+
 ```bash
 # Basic query (with re-ranking enabled by default)
-curl -X POST http://localhost:8000/query \
+curl -X POST http://localhost:8000/api/v1/query/ \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is our company policy on remote work?",
@@ -104,7 +114,22 @@ curl -X POST http://localhost:8000/query \
   }'
 ```
 
-### Response Example
+#### v2 API Example (Enhanced)
+
+```bash
+curl -X POST http://localhost:8000/api/v2/query/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "What is our company policy on remote work?",
+    "top_k": 5,
+    "include_metadata": true,
+    "response_format": "detailed"
+  }'
+```
+
+#### Response Comparison
+
+**v1 Response:**
 ```json
 {
   "answer": "According to our Employee Handbook (section 3.2), remote work is...",
@@ -196,6 +221,29 @@ curl "http://localhost:8000/documents/batch/{task_id}/status"
     "current": 1,
     "total": 2,
     "status": "Processed doc1"
+
+**v2 Response (Enhanced):**
+```json
+{
+  "query_id": "550e8400-e29b-41d4-a716-446655440000",
+  "answer": "According to our Employee Handbook (section 3.2), remote work is...",
+  "sources": [
+    {
+      "document": "employee-handbook-2024.pdf",
+      "page": 12,
+      "relevance_score": 0.89,
+      "text": "Remote work policy excerpt..."
+    }
+  ],
+  "confidence": 0.87,
+  "latency_ms": 2341,
+  "tokens_used": 1245,
+  "model_version": "2.0",
+  "timestamp": "2026-03-15T12:34:56.789Z",
+  "metadata": {
+    "search_type": "hybrid",
+    "top_k": 5,
+    "response_format": "detailed"
   }
 }
 ```
@@ -652,6 +700,18 @@ groups:
         annotations:
           summary: "LLM token usage exceeds 10K tokens/5m"
 ```
+
+#### Available Endpoints
+
+| Feature | v1 Endpoint | v2 Endpoint |
+|---------|-------------|-------------|
+| Query | `POST /api/v1/query/` | `POST /api/v2/query/` |
+| Batch Query | `POST /api/v1/query/batch` | `POST /api/v2/query/batch` |
+| Health | `GET /api/v1/query/health` | `GET /api/v2/query/health` |
+| Ingest | `POST /api/v1/ingest/` | `POST /api/v2/ingest/` |
+| Documents | `GET /api/v1/documents/` | `GET /api/v2/documents/` |
+
+**Note**: v1 API remains fully supported and maintained. New applications should consider using v2 for enhanced features.
 
 ---
 

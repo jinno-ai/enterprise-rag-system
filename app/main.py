@@ -26,6 +26,7 @@ from app.middleware.request_id import RequestIDMiddleware
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.api.routes.v2 import router as v2_router
 from app.middleware.compression import CompressionMiddleware
 
 
@@ -262,9 +263,14 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+
+# v1 API routes (backward compatible)
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
 app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
+
+# v2 API routes (enhanced features)
+app.include_router(v2_router)
 
 
 @app.get("/", tags=["Health"])

@@ -190,7 +190,7 @@ def test_context_compression():
 
 @pytest.mark.integration
 @requires_openai
-async def test_batch_query():
+async def test_batch_query(temp_vector_db):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -198,7 +198,7 @@ async def test_batch_query():
     from app.core.embeddings import get_embedding_model
 
     # Initialize
-    vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
+    vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
     # Use mock embeddings for testing
@@ -215,12 +215,12 @@ async def test_batch_query():
 
 @pytest.mark.integration
 @requires_openai
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(temp_vector_db):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
-    vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
+    vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
     # Use mock embeddings for testing
@@ -254,16 +254,14 @@ def test_retrieval_with_filters():
 
 
 @pytest.mark.integration
-def test_confidence_calculation():
+def test_confidence_calculation(temp_vector_db):
     """Test confidence score calculation"""
     from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
-    from app.services.retrieval import HybridRetriever
-
-    vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
+    vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
     # Use mock embeddings for testing
