@@ -4,8 +4,8 @@ Configuration management for Enterprise RAG System
 This module handles all configuration settings using Pydantic for validation.
 """
 
-from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, AliasChoices
 from typing import Optional
 import os
 
@@ -14,12 +14,12 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
     # API Keys
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
-    anthropic_api_key: Optional[str] = Field(None, env="ANTHROPIC_API_KEY")
-    cohere_api_key: Optional[str] = Field(None, env="COHERE_API_KEY")
+    openai_api_key: str = Field(..., validation_alias=AliasChoices("openai_api_key", "OPENAI_API_KEY"))
+    anthropic_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("anthropic_api_key", "ANTHROPIC_API_KEY"))
+    cohere_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("cohere_api_key", "COHERE_API_KEY"))
     
     # Vector Database
-    pinecone_api_key: Optional[str] = Field(None, env="PINECONE_API_KEY")
+    pinecone_api_key: Optional[str] = Field(None, validation_alias=AliasChoices("pinecone_api_key", "PINECONE_API_KEY"))
     pinecone_environment: str = Field("us-west1-gcp", env="PINECONE_ENVIRONMENT")
     pinecone_index_name: str = Field("enterprise-rag", env="PINECONE_INDEX_NAME")
     
@@ -55,10 +55,12 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = Field(False, env="DEBUG")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 # Global settings instance
