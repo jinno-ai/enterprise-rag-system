@@ -99,12 +99,21 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
         # Start timing
         start_time = time.time()
 
-        # Start query tracking for query endpoints
+        # Cache request body for query endpoint tracking
+        # This prevents consuming the stream before the route handler can read it
         query_metrics = None
+        query_text = None
         if self.enable_query_tracking and self.is_query_endpoint(request.url.path):
             try:
-                # Extract query from request body if available
-                query_text = await self._extract_query_text(request)
+                # Read and cache the body
+                body = await request.body()
+
+                # Store in request state for potential later use
+                if not hasattr(request.state, "_cached_body"):
+                    request.state._cached_body = body
+
+                # Extract query text from cached body
+                query_text = self._extract_query_from_bytes(body)
 
                 # Start tracking
                 query_metrics = monitor.start_query(
@@ -117,7 +126,7 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
                     }
                 )
             except Exception as e:
-                logger.warning(f"Failed to start query tracking: {e}")
+                logger.warning(f"Failed to start query tracking: {e}", exc_info=True)
 
         # Process request
         try:
@@ -146,8 +155,11 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
                     logger.warning(f"Failed to end query tracking: {e}")
 
             # Add request ID and timing to response headers for all tracked requests
-            response.headers["X-Request-ID"] = request_id
-            response.headers["X-Request-Time-Ms"] = f"{request_time_ms:.2f}"
+            # Use dict.update() for safer header mutation
+            response.headers.update({
+                "X-Request-ID": request_id,
+                "X-Request-Time-Ms": f"{request_time_ms:.2f}"
+            })
 
             # Log request completion
             logger.debug(
@@ -183,29 +195,17 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
             # Re-raise the exception
             raise
 
-    async def _extract_query_text(self, request: Request) -> Optional[str]:
+    def _extract_query_from_bytes(self, body: bytes) -> Optional[str]:
         """
-        Extract query text from request body
+        Extract query text from cached request body bytes
 
         Args:
-            request: Request object
+            body: Request body as bytes
 
         Returns:
             Query text if found, None otherwise
         """
         try:
-            # Only try to extract for POST requests with JSON content
-            if request.method != "POST":
-                return None
-
-            content_type = request.headers.get("content-type", "")
-            if "application/json" not in content_type:
-                return None
-
-            # Read request body
-            body = await request.body()
-
-            # Parse JSON (avoid modifying the original request)
             import json
             data = json.loads(body.decode("utf-8"))
 
@@ -214,6 +214,8 @@ class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):
                 if field in data and isinstance(data[field], str):
                     return data[field]
 
+            return None
+        except Exception:
             return None
 
         except Exception as e:

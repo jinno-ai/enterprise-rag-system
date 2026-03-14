@@ -9,7 +9,7 @@ import time
 import logging
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 import threading
 
@@ -92,7 +92,7 @@ class PerformanceMonitor:
             metrics = QueryMetrics(
                 query_id=query_id,
                 query=query,
-                start_time=datetime.utcnow(),
+                start_time=datetime.now(timezone.utc),
                 metadata=metadata or {}
             )
 
@@ -132,7 +132,7 @@ class PerformanceMonitor:
                 return None
 
             metrics = self._active_queries.pop(query_id)
-            metrics.end_time = datetime.utcnow()
+            metrics.end_time = datetime.now(timezone.utc)
             metrics.latency_ms = latency_ms
             metrics.tokens_used = tokens_used
             metrics.sources_count = sources_count

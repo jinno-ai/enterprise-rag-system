@@ -1440,6 +1440,33 @@ async def custom_query_handler(query: str):
 **Thread Safety:**
 The performance monitor is thread-safe and can handle concurrent query executions in production environments.
 
+**Enabling Performance Monitoring:**
+
+> **NOTE:** Performance monitoring middleware is not enabled by default. To enable it, add the middleware to `app/main.py`:
+
+```python
+from app.middleware.monitoring import PerformanceMonitoringMiddleware
+
+# Add after other middleware (CORS, compression)
+app.add_middleware(
+    PerformanceMonitoringMiddleware,
+    enable_query_tracking=True,      # Track query-specific metrics
+    track_all_requests=True,           # Track all HTTP requests
+    query_path_prefix="/api/v1/query"  # Identify query endpoints
+)
+```
+
+**Configuration:**
+
+The performance monitor uses these default settings:
+- `max_history=1000` - Maximum queries to keep in history
+- Queries are tracked in memory (lost on restart)
+
+For production use, consider:
+1. Enabling the middleware in `app/main.py`
+2. Adjusting `max_history` based on your traffic
+3. Adding metrics persistence (Redis/database) for long-term analysis
+
 ---
 
 ## 🏗️ Architecture
