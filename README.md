@@ -774,9 +774,11 @@ curl -O http://localhost:8000/api/v1/documents/export/my_document.pdf
 ```
 
 **Export Formats:**
-- `pdf` - PDF format (requires reportlab library)
-- `docx` - Microsoft Word format (requires python-docx library)
+- `pdf` - PDF format (requires reportlab library - already included in requirements.txt)
+- `docx` - Microsoft Word format (requires python-docx library - already included in requirements.txt)
 - `txt` - Plain text format (always available)
+
+**Note**: The export feature gracefully handles missing optional libraries. If reportlab or python-docx are not installed, PDF and DOCX export will be disabled with clear error messages. TXT export is always available.
 
 #### Query Autocorrect API
 
