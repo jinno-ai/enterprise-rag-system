@@ -707,12 +707,139 @@ groups:
 | Feature | v1 Endpoint | v2 Endpoint |
 |---------|-------------|-------------|
 | Query | `POST /api/v1/query/` | `POST /api/v2/query/` |
+| Streaming Query | `POST /api/v1/query/stream` | `POST /api/v2/query/stream` |
 | Batch Query | `POST /api/v1/query/batch` | `POST /api/v2/query/batch` |
 | Health | `GET /api/v1/query/health` | `GET /api/v2/query/health` |
 | Ingest | `POST /api/v1/ingest/` | `POST /api/v2/ingest/` |
 | Documents | `GET /api/v1/documents/` | `GET /api/v2/documents/` |
 
 **Note**: v1 API remains fully supported and maintained. New applications should consider using v2 for enhanced features.
+
+#### Streaming Query API
+
+The Streaming Query API provides real-time response streaming using Server-Sent Events (SSE), enabling progressive display of query results as they're generated. This improves user experience for long-running queries and large result sets.
+
+**Streaming Query:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/stream \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -d '{
+    "query": "What is our company policy on remote work?",
+    "collection": "hr-policies",
+    "top_k": 5,
+    "use_hybrid": true
+  }'
+```
+
+**Streaming Response Format:**
+The server sends SSE events with the following types:
+
+1. **status** - Progress updates (e.g., "Retrieving documents...", "Generating answer...")
+2. **retrieval** - Retrieved documents with metadata
+3. **generation** - Streamed answer chunks
+4. **metadata** - Final response metadata (confidence, tokens, sources)
+5. **done** - Stream completion signal
+6. **error** - Error information if something goes wrong
+
+**Example SSE Stream:**
+```
+data: {"type": "status", "content": "Retrieving relevant documents..."}
+
+data: {"type": "retrieval", "data": {"count": 3, "sources": [{"document": "Remote work policy...", "score": 0.89, "metadata": {"filename": "hr_policy.pdf", "page": 1}}]}}
+
+data: {"type": "status", "content": "Generating answer..."}
+
+data: {"type": "generation", "content": "According to our Employee"}
+
+data: {"type": "generation", "content": "Handbook (section 3.2), remote work"}
+
+data: {"type": "generation", "content": "is permitted for eligible employees..."}
+
+data: {"type": "metadata", "data": {"confidence": 0.87, "tokens_used": 1245, "sources": [...]}}
+
+data: {"type": "done"}
+```
+
+**Client-Side Implementation (Python):**
+```python
+import requests
+import json
+
+response = requests.post(
+    "http://localhost:8000/api/v1/query/stream",
+    json={"query": "What is the remote work policy?", "top_k": 5},
+    stream=True
+)
+
+for line in response.iter_lines():
+    if line:
+        line = line.decode('utf-8')
+        if line.startswith('data: '):
+            data = json.loads(line[6:])
+            event_type = data['type']
+
+            if event_type == 'generation':
+                # Stream answer chunks to UI
+                print(data['content'], end='', flush=True)
+            elif event_type == 'metadata':
+                # Display final metadata
+                print(f"\nConfidence: {data['data']['confidence']}")
+                print(f"Tokens: {data['data']['tokens_used']}")
+            elif event_type == 'error':
+                print(f"Error: {data['content']}")
+```
+
+**Client-Side Implementation (JavaScript):**
+```javascript
+const response = await fetch('http://localhost:8000/api/v1/query/stream', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({
+    query: 'What is the remote work policy?',
+    top_k: 5
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const {done, value} = await reader.read();
+  if (done) break;
+
+  const chunk = decoder.decode(value);
+  const lines = chunk.split('\n');
+
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = JSON.parse(line.substring(6));
+
+      if (data.type === 'generation') {
+        // Append to UI
+        appendToAnswer(data.content);
+      } else if (data.type === 'metadata') {
+        // Update metadata display
+        updateMetadata(data.data);
+      }
+    }
+  }
+}
+```
+
+**Key Features:**
+- **Real-Time Feedback**: Users see progress as query is processed
+- **Progressive Display**: Answer streams token-by-token for immediate feedback
+- **Reduced Perceived Latency**: Users start seeing results immediately
+- **Backward Compatible**: Non-streaming endpoints still work as before
+- **Error Handling**: Errors are sent as SSE events without breaking the stream
+
+**Use Cases:**
+- Long-running queries on large document collections
+- Real-time chat interfaces
+- Progressive result display in UI
+- Mobile applications where perceived latency matters
+- Multi-turn conversations with streaming responses
 
 #### Batch Query API
 

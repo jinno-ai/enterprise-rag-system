@@ -5,12 +5,14 @@ This module defines API endpoints for querying the RAG system.
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
 from app.api.dependencies import get_rag_pipeline
 from app.core.rate_limit import limiter
+from app.services.streaming import create_streaming_response
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -212,6 +214,71 @@ async def batch_query(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch query failed: {str(e)}"
+        )
+
+
+@router.post("/stream")
+async def query_stream(request: QueryRequest):
+    """
+    Query the RAG system with streaming response using Server-Sent Events (SSE)
+
+    This endpoint streams the query response in real-time, providing:
+    - Retrieval status and results
+    - Progressive answer generation
+    - Final metadata (confidence, tokens, sources)
+
+    Args:
+        request: Query request with question and parameters
+
+    Returns:
+        StreamingResponse with SSE format
+
+    Example:
+        ```python
+        import requests
+
+        response = requests.post(
+            "http://localhost:8000/api/v1/query/stream",
+            json={"query": "What is the company policy?", "top_k": 5},
+            stream=True
+        )
+
+        for line in response.iter_lines():
+            if line:
+                print(line.decode('utf-8'))
+        ```
+    """
+    try:
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
+        # Create streaming response
+        async def generate():
+            async for chunk in create_streaming_response(
+                pipeline=pipeline,
+                query=request.query,
+                top_k=request.top_k,
+                use_hybrid=request.use_hybrid,
+                filter_dict=request.filters,
+                enable_token_streaming=True
+            ):
+                yield chunk
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Streaming query failed: {str(e)}"
         )
 
 
