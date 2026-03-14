@@ -6,10 +6,11 @@ This improves query quality by detecting and correcting typos before processing.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Tuple
 from dataclasses import dataclass, asdict
 from difflib import SequenceMatcher, get_close_matches
 import re
+
 
 logger = logging.getLogger(__name__)
 
@@ -299,35 +300,61 @@ class AutocorrectService:
         Returns:
             AutocorrectResult with corrections applied
         """
-        if not query or not query.strip():
+        try:
+            logger.debug(f"Autocorrect request for query: '{query[:100]}...'")
+
+            if not query or not query.strip():
+                logger.debug("Empty query received, skipping correction")
+                return AutocorrectResult(
+                    original=query,
+                    corrected=query,
+                    was_corrected=False,
+                    corrections=[]
+                )
+
+            original_query = query
+            corrections = []
+            words = self._tokenize(query)
+            corrected_words = []
+
+            for word in words:
+                corrected_word, correction = self._correct_word(word)
+                corrected_words.append(corrected_word)
+                if correction:
+                    corrections.append(correction)
+
+            corrected_query = self._reconstruct_query(corrected_words, words, original_query)
+            was_corrected = len(corrections) > 0
+
+            if was_corrected:
+                logger.info(
+                    f"Applied {len(corrections)} corrections: '{original_query[:50]}...' -> '{corrected_query[:50]}...'",
+                    extra={
+                        "original_query": original_query,
+                        "corrected_query": corrected_query,
+                        "corrections_count": len(corrections),
+                        "corrections": corrections
+                    }
+                )
+            else:
+                logger.debug(f"No corrections needed for query: '{query[:100]}...'")
+
+            return AutocorrectResult(
+                original=original_query,
+                corrected=corrected_query,
+                was_corrected=was_corrected,
+                corrections=corrections
+            )
+
+        except Exception as e:
+            logger.error(f"Autocorrect failed for query '{query[:100]}...': {e}", exc_info=True)
+            # Return original query on error (graceful degradation)
             return AutocorrectResult(
                 original=query,
                 corrected=query,
                 was_corrected=False,
                 corrections=[]
             )
-
-        original_query = query
-        corrections = []
-        words = self._tokenize(query)
-        corrected_words = []
-
-        for word in words:
-            corrected_word, correction = self._correct_word(word)
-            corrected_words.append(corrected_word)
-            if correction:
-                corrections.append(correction)
-
-        corrected_query = self._reconstruct_query(corrected_words, words, original_query)
-
-        was_corrected = len(corrections) > 0
-
-        return AutocorrectResult(
-            original=original_query,
-            corrected=corrected_query,
-            was_corrected=was_corrected,
-            corrections=corrections
-        )
 
     def _tokenize(self, query: str) -> List[str]:
         """
@@ -345,7 +372,7 @@ class AutocorrectService:
 
         return tokens
 
-    def _correct_word(self, word: str) -> tuple:
+    def _correct_word(self, word: str) -> Tuple[str, Optional[Dict[str, Any]]]:
         """
         Correct a single word.
 
