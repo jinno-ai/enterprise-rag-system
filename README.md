@@ -77,6 +77,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **PostgreSQL connection pooling** with asyncpg for production workloads
   - **Request ID tracking** for distributed tracing and debugging
   - **Webhook notifications** for document processing events
+  - **Document Export** - Export documents in PDF, DOCX, and TXT formats with metadata preservation
 
 ---
 
@@ -720,6 +721,62 @@ groups:
 | Documents | `GET /api/v1/documents/` | `GET /api/v2/documents/` |
 
 **Note**: v1 API remains fully supported and maintained. New applications should consider using v2 for enhanced features.
+
+#### Document Export API
+
+The Document Export feature allows exporting documents and content in multiple formats (PDF, DOCX, TXT) with proper formatting and metadata preservation.
+
+**Export a Document:**
+```bash
+curl -X POST http://localhost:8000/api/v1/documents/export \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "# Sample Document\n\nThis is the content to export.",
+    "filename": "my_document",
+    "format": "pdf",
+    "title": "My Document Title",
+    "metadata": {
+      "author": "John Doe",
+      "created_at": "2026-03-15"
+    }
+  }'
+```
+
+**Batch Export Multiple Documents:**
+```bash
+curl -X POST http://localhost:8000/api/v1/documents/export/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "format": "txt",
+    "documents": [
+      {
+        "content": "First document content",
+        "filename": "doc1",
+        "metadata": {"id": "1"}
+      },
+      {
+        "content": "Second document content",
+        "filename": "doc2",
+        "title": "Second Document"
+      }
+    ]
+  }'
+```
+
+**Get Supported Formats:**
+```bash
+curl http://localhost:8000/api/v1/documents/export/formats
+```
+
+**Download Exported File:**
+```bash
+curl -O http://localhost:8000/api/v1/documents/export/my_document.pdf
+```
+
+**Export Formats:**
+- `pdf` - PDF format (requires reportlab library)
+- `docx` - Microsoft Word format (requires python-docx library)
+- `txt` - Plain text format (always available)
 
 #### Query Autocorrect API
 

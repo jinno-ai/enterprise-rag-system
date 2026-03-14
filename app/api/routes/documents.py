@@ -6,6 +6,7 @@ Supports both synchronous and asynchronous processing modes.
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -926,3 +927,238 @@ async def cancel_task(task_id: str) -> Dict[str, Any]:
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Task cancellation not yet implemented"
     )
+
+
+# Export endpoints
+
+class ExportRequest(BaseModel):
+    """Request model for document export"""
+    content: str = Field(..., description="Document content to export")
+    filename: str = Field(..., description="Output filename (without extension)")
+    format: str = Field(..., description="Export format: pdf, docx, or txt")
+    title: Optional[str] = Field(None, description="Optional document title")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata")
+
+
+class ExportResponse(BaseModel):
+    """Response model for document export"""
+    success: bool
+    format: str
+    file_size: int
+    duration_ms: float
+    file_path: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class BatchExportRequest(BaseModel):
+    """Request model for batch document export"""
+    documents: List[Dict[str, Any]] = Field(..., description="List of documents to export")
+    format: str = Field(..., description="Export format: pdf, docx, or txt")
+
+
+class SupportedFormatsResponse(BaseModel):
+    """Response model for supported export formats"""
+    formats: List[str]
+    count: int
+
+
+@router.post("/export", response_model=ExportResponse)
+async def export_document(request: ExportRequest) -> ExportResponse:
+    """
+    Export a document to the specified format.
+
+    Supports PDF, DOCX, and TXT export with formatting and metadata preservation.
+
+    Args:
+        request: Export request with content, filename, format, and optional metadata
+
+    Returns:
+        ExportResponse with operation status and file details
+
+    Raises:
+        HTTPException: If export format is not supported or libraries not available
+    """
+    try:
+        from app.services.export import DocumentExporter, ExportFormat
+
+        # Validate format
+        try:
+            export_format = ExportFormat(request.format.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported export format: {request.format}. Supported: pdf, docx, txt"
+            )
+
+        # Create exporter
+        exporter = DocumentExporter(output_dir="./exports")
+
+        # Export document
+        result = exporter.export_document(
+            content=request.content,
+            filename=request.filename,
+            export_format=export_format,
+            metadata=request.metadata,
+            title=request.title
+        )
+
+        if not result.success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.error_message
+            )
+
+        return ExportResponse(
+            success=result.success,
+            format=result.format.value,
+            file_size=result.file_size,
+            duration_ms=result.duration_ms,
+            file_path=result.file_path
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Export failed: {str(e)}"
+        )
+
+
+@router.post("/export/batch")
+async def export_documents_batch(request: BatchExportRequest) -> Dict[str, Any]:
+    """
+    Export multiple documents in batch.
+
+    Args:
+        request: Batch export request with documents list and format
+
+    Returns:
+        Summary with results for each document
+
+    Raises:
+        HTTPException: If export format is not supported
+    """
+    try:
+        from app.services.export import DocumentExporter, ExportFormat
+
+        # Validate format
+        try:
+            export_format = ExportFormat(request.format.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported export format: {request.format}. Supported: pdf, docx, txt"
+            )
+
+        # Create exporter
+        exporter = DocumentExporter(output_dir="./exports")
+
+        # Export batch
+        results = exporter.export_batch(
+            documents=request.documents,
+            export_format=export_format
+        )
+
+        # Summarize results
+        success_count = sum(1 for r in results if r.success)
+        total_size = sum(r.file_size for r in results if r.success)
+
+        return {
+            "total_documents": len(results),
+            "successful": success_count,
+            "failed": len(results) - success_count,
+            "total_size_bytes": total_size,
+            "format": request.format,
+            "results": [
+                {
+                    "filename": r.file_path.split('/')[-1] if r.file_path else "unknown",
+                    "success": r.success,
+                    "error": r.error_message
+                }
+                for r in results
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch export failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch export failed: {str(e)}"
+        )
+
+
+@router.get("/export/{filename}", response_class=FileResponse)
+async def download_exported_file(filename: str) -> FileResponse:
+    """
+    Download a previously exported document.
+
+    Args:
+        filename: Name of the file to download
+
+    Returns:
+        FileResponse with the exported file
+
+    Raises:
+        HTTPException: If file not found
+    """
+    try:
+        file_path = Path("./exports") / filename
+
+        # Validate path safety
+        if ".." in filename or not file_path.resolve().is_relative_to(Path("./exports").resolve()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename"
+            )
+
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Exported file not found: {filename}"
+            )
+
+        return FileResponse(
+            path=str(file_path),
+            filename=filename,
+            media_type='application/octet-stream'
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Download failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Download failed: {str(e)}"
+        )
+
+
+@router.get("/export/formats", response_model=SupportedFormatsResponse)
+async def get_supported_formats() -> SupportedFormatsResponse:
+    """
+    Get list of supported export formats.
+
+    Returns:
+        SupportedFormatsResponse with available formats
+    """
+    try:
+        from app.services.export import DocumentExporter
+
+        exporter = DocumentExporter()
+        formats = exporter.get_supported_formats()
+
+        return SupportedFormatsResponse(
+            formats=formats,
+            count=len(formats)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get supported formats: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get supported formats: {str(e)}"
+        )
