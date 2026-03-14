@@ -3,7 +3,7 @@ trigger:
 - develop
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
 steps:
 - task: UsePythonVersion@0
@@ -19,11 +19,11 @@ steps:
 
 - script: |
     export OPENAI_API_KEY=dummy
-    python -m pytest tests/ -v --cov=app --cov-report=xml
+    python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=term
   displayName: 'Run tests'
 
-- task: PublishCodeCoverageResults@1
+- task: PublishCodeCoverageResults@2
   inputs:
-    codeCoverageTool: Cobertura
-    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
   displayName: 'Publish code coverage'
+  condition: succeededOrFailed()

@@ -328,6 +328,9 @@ class FAISSVectorDB(VectorDB):
     
     def save(self, path: str) -> None:
         """Save FAISS index to disk"""
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
         if self.index is None:
             raise RuntimeError("No index to save")
         
