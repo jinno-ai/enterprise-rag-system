@@ -49,7 +49,8 @@ class PreviewGenerator:
         max_preview_length: int = 300,
         min_sentences: int = 1,
         max_sentences: int = 3,
-        sentence_delimiters: Optional[List[str]] = None
+        sentence_delimiters: Optional[List[str]] = None,
+        important_words: Optional[List[str]] = None
     ):
         """
         Initialize preview generator.
@@ -59,11 +60,17 @@ class PreviewGenerator:
             min_sentences: Minimum number of sentences in preview
             max_sentences: Maximum number of sentences in preview
             sentence_delimiters: Characters that mark sentence boundaries
+            important_words: List of important words for sentence scoring (optional)
         """
         self.max_preview_length = max_preview_length
         self.min_sentences = min_sentences
         self.max_sentences = max_sentences
         self.sentence_delimiters = sentence_delimiters or ['.', '!', '?', '\n']
+        self.important_words = important_words or [
+            'important', 'key', 'main', 'significant', 'critical',
+            'essential', 'primary', 'major', 'conclusion', 'summary',
+            'therefore', 'however', 'furthermore', 'moreover'
+        ]
 
     def generate_preview(
         self,
@@ -177,7 +184,7 @@ class PreviewGenerator:
         Score sentences based on multiple factors:
         - Length (prefer medium-length sentences)
         - Position (prefer earlier sentences)
-        - Keyword density
+        - Keyword density (uses self.important_words)
         """
         scored = []
 
@@ -196,13 +203,8 @@ class PreviewGenerator:
                 score += 0.1
 
             # Keyword score: bonus for important words
-            important_words = [
-                'important', 'key', 'main', 'significant', 'critical',
-                'essential', 'primary', 'major', 'conclusion', 'summary',
-                'therefore', 'however', 'furthermore', 'moreover'
-            ]
             sentence_lower = sentence.lower()
-            keyword_count = sum(1 for word in important_words if word in sentence_lower)
+            keyword_count = sum(1 for word in self.important_words if word in sentence_lower)
             score += keyword_count * 0.1
 
             # Capitalization score: sentences starting with capital letter
@@ -325,6 +327,21 @@ class PreviewCache:
     def clear(self) -> None:
         """Clear all cached previews"""
         self._cache.clear()
+
+    def invalidate(self, doc_id: str) -> bool:
+        """
+        Invalidate cached preview for a specific document.
+
+        Args:
+            doc_id: Document ID to invalidate
+
+        Returns:
+            True if preview was found and removed, False otherwise
+        """
+        if doc_id in self._cache:
+            del self._cache[doc_id]
+            return True
+        return False
 
     def size(self) -> int:
         """Get current cache size"""

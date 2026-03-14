@@ -655,6 +655,82 @@ async def get_batch_status(task_id: str) -> BatchStatusResponse:
         )
 
 
+@router.get("/preview/{doc_id}")
+async def get_document_preview(doc_id: str) -> Dict[str, Any]:
+    """
+    Get cached preview for a document.
+
+    Args:
+        doc_id: Document identifier
+
+    Returns:
+        Document preview with metadata
+    """
+    try:
+        from app.services.preview import get_preview_cache
+
+        cache = get_preview_cache()
+        preview = cache.get(doc_id)
+
+        if not preview:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Preview not found for document: {doc_id}"
+            )
+
+        return {
+            "doc_id": preview.doc_id,
+            "preview_text": preview.preview_text,
+            "preview_length": preview.preview_length,
+            "original_length": preview.original_length,
+            "compression_ratio": round(preview.compression_ratio, 3),
+            "key_sentences": preview.key_sentences,
+            "metadata": preview.metadata,
+            "generated_at": preview.generated_at.isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get preview: {str(e)}"
+        )
+
+
+@router.delete("/preview/{doc_id}")
+async def invalidate_document_preview(doc_id: str) -> Dict[str, Any]:
+    """
+    Invalidate cached preview for a document.
+
+    Args:
+        doc_id: Document identifier
+
+    Returns:
+        Status of invalidation
+    """
+    try:
+        from app.services.preview import get_preview_cache
+
+        cache = get_preview_cache()
+        success = cache.invalidate(doc_id) if hasattr(cache, 'invalidate') else False
+
+        return {
+            "success": success,
+            "doc_id": doc_id,
+            "message": f"Preview for {doc_id} {'invalidated' if success else 'not found in cache'}"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to invalidate preview: {str(e)}"
+        )
+
+
+# Async processing endpoints
+
+
 # Async processing endpoints
 
 class AsyncIngestRequest(BaseModel):

@@ -1614,8 +1614,76 @@ generator = PreviewGenerator(
     max_preview_length=500,        # Maximum preview length in characters
     min_sentences=2,               # Minimum number of sentences
     max_sentences=5,               # Maximum number of sentences
-    sentence_delimiters=['.', '!', '?', '\n']  # Sentence boundaries
+    sentence_delimiters=['.', '!', '?', '\n'],  # Sentence boundaries
+    important_words=['critical', 'essential', 'important']  # Custom keywords
 )
+```
+
+### API Endpoints
+
+The document preview generation is integrated into the document ingestion pipeline and provides dedicated API endpoints:
+
+#### Automatic Preview Generation
+
+Previews are automatically generated during document ingestion:
+
+```bash
+# Upload documents - previews are generated automatically
+curl -X POST "http://localhost:8000/api/v1/documents/ingest" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "./data/documents",
+    "collection": "my-docs"
+  }'
+
+# Response includes preview count
+{
+  "success": true,
+  "documents_processed": 10,
+  "chunks_created": 50,
+  "collection": "my-docs",
+  "message": "Successfully ingested 10 documents with 10 previews"
+}
+```
+
+#### Get Document Preview
+
+Retrieve a cached preview for a specific document:
+
+```bash
+# Get preview by document ID
+curl "http://localhost:8000/api/v1/documents/preview/doc_abc123"
+
+# Response
+{
+  "doc_id": "doc_abc123",
+  "preview_text": "This is the first sentence. This is an important sentence...",
+  "preview_length": 150,
+  "original_length": 2500,
+  "compression_ratio": 0.06,
+  "key_sentences": ["This is the first sentence.", "This is an important sentence."],
+  "metadata": {
+    "source": "/path/to/document.pdf",
+    "filename": "document.pdf"
+  },
+  "generated_at": "2026-03-15T12:34:56.789Z"
+}
+```
+
+#### Invalidate Preview Cache
+
+Invalidate a cached preview (useful when documents are updated):
+
+```bash
+# Invalidate preview for a document
+curl -X DELETE "http://localhost:8000/api/v1/documents/preview/doc_abc123"
+
+# Response
+{
+  "success": true,
+  "doc_id": "doc_abc123",
+  "message": "Preview for doc_abc123 invalidated"
+}
 ```
 
 ### Preview Data Structure
