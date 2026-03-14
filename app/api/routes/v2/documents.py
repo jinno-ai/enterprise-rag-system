@@ -2,16 +2,23 @@
 Documents API Routes v2
 
 This module defines v2 API endpoints for document management.
-v2 includes enhanced features while maintaining backward compatibility with v1.
+v2 uses the same underlying services as v1 but with enhanced response models.
+
+Note: For production use, these endpoints should extract shared logic from v1/documents.py
+into a common service layer that both v1 and v2 can use. Currently, v1 has full implementations
+with DocumentLoader, TextSplitter, embedding generation, and vector DB operations (449 lines).
+The v2 endpoints here provide enhanced response models with timestamps and metadata.
 """
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import logging
 
 
 router = APIRouter(tags=["documents v2"])
+logger = logging.getLogger(__name__)
 
 
 class DocumentListResponseV2(BaseModel):

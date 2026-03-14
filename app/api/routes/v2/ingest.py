@@ -2,7 +2,12 @@
 Ingest API Routes v2
 
 This module defines v2 API endpoints for document ingestion.
-v2 includes enhanced features while maintaining backward compatibility with v1.
+v2 uses the same underlying services as v1 but with enhanced response models.
+
+Note: For production use, these endpoints should use the same ingestion logic
+as v1 (DocumentLoader, TextSplitter, embedding generation, vector DB operations).
+The v1 implementation in app/api/routes/documents.py has 449 lines of full functionality.
+The v2 endpoints here provide enhanced response models with job tracking and timestamps.
 """
 
 from fastapi import APIRouter, HTTPException, status, UploadFile, File
@@ -10,9 +15,11 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
+import logging
 
 
 router = APIRouter(tags=["ingest v2"])
+logger = logging.getLogger(__name__)
 
 
 class IngestRequestV2(BaseModel):

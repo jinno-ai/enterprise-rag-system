@@ -25,7 +25,6 @@ class QueryRequestV2(BaseModel):
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
     include_metadata: bool = Field(False, description="Include additional metadata in response")
-    response_format: str = Field("standard", description="Response format: standard, detailed, concise")
 
 
 class QueryResponseV2(BaseModel):
@@ -46,7 +45,6 @@ class BatchQueryRequestV2(BaseModel):
     queries: List[str] = Field(..., description="List of questions to ask")
     collection: Optional[str] = None
     top_k: int = Field(5, ge=1, le=20)
-    parallel: bool = Field(False, description="Execute queries in parallel")
     include_metadata: bool = Field(False, description="Include metadata in responses")
 
 
@@ -87,8 +85,7 @@ async def query_v2(request: QueryRequestV2) -> QueryResponseV2:
             metadata = {
                 "collection": request.collection,
                 "search_type": "hybrid" if request.use_hybrid else "semantic",
-                "top_k": request.top_k,
-                "response_format": request.response_format
+                "top_k": request.top_k
             }
 
         return QueryResponseV2(
@@ -115,10 +112,10 @@ async def batch_query_v2(request: BatchQueryRequestV2) -> List[QueryResponseV2]:
     """
     Query the RAG system with multiple questions (v2)
 
-    Enhanced v2 endpoint with parallel execution support
+    Enhanced v2 endpoint with metadata support
 
     Args:
-        request: Batch query request with parallel option
+        request: Batch query request
 
     Returns:
         List of QueryResponseV2 objects
@@ -128,7 +125,7 @@ async def batch_query_v2(request: BatchQueryRequestV2) -> List[QueryResponseV2]:
 
         pipeline = get_rag_pipeline()
 
-        # Execute batch query (parallelism would be implemented in the pipeline)
+        # Execute batch query
         results = pipeline.batch_query(
             questions=request.queries,
             top_k=request.top_k
@@ -141,8 +138,7 @@ async def batch_query_v2(request: BatchQueryRequestV2) -> List[QueryResponseV2]:
             if request.include_metadata:
                 metadata = {
                     "collection": request.collection,
-                    "query_index": idx,
-                    "parallel": request.parallel
+                    "query_index": idx
                 }
 
             responses.append(QueryResponseV2(
