@@ -26,6 +26,7 @@ python-docx==1.1.0
 markdown==3.5.1
 beautifulsoup4==4.12.2
 pandoc==2.3
+reportlab==4.0.7
 
 # Embeddings & Search
 sentence-transformers==2.2.2

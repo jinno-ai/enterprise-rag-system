@@ -1003,10 +1003,23 @@ async def export_document(request: ExportRequest) -> ExportResponse:
         )
 
         if not result.success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result.error_message
-            )
+            # Distinguish validation errors from system errors
+            error_detail = result.error_message or "Unknown error"
+            error_lower = error_detail.lower()
+
+            if any(keyword in error_lower for keyword in
+                   ['invalid', 'unsupported', 'must be', 'required', 'content must be', 'filename must be']):
+                # Client error - bad input
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_detail
+                )
+            else:
+                # Server error - system failure
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_detail
+                )
 
         return ExportResponse(
             success=result.success,

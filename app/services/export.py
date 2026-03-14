@@ -19,11 +19,13 @@ try:
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
     from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
+    from reportlab.lib import colors
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
+    colors = None
 
 try:
     from docx import Document
@@ -106,19 +108,53 @@ class DocumentExporter:
         """
         start_time = datetime.now()
 
+        # Input validation
+        if not isinstance(content, str):
+            return ExportResult(
+                success=False,
+                format=export_format,
+                file_size=0,
+                duration_ms=0,
+                error_message=f"Content must be string, got {type(content).__name__}"
+            )
+
+        if not content.strip():
+            logger.warning(f"Empty content provided for '{filename}'")
+
+        if not filename or not isinstance(filename, str):
+            return ExportResult(
+                success=False,
+                format=export_format,
+                file_size=0,
+                duration_ms=0,
+                error_message="Filename must be non-empty string"
+            )
+
+        # Sanitize filename
+        safe_filename = self._sanitize_filename(filename)
+
+        if metadata is not None and not isinstance(metadata, dict):
+            return ExportResult(
+                success=False,
+                format=export_format,
+                file_size=0,
+                duration_ms=0,
+                error_message="Metadata must be dictionary"
+            )
+
         try:
             if export_format == ExportFormat.PDF:
                 if not REPORTLAB_AVAILABLE:
                     raise ValueError("PDF export requires reportlab library")
-                result = self._export_to_pdf(content, filename, metadata, title)
+                result = self._export_to_pdf(content, safe_filename, metadata, title)
 
             elif export_format == ExportFormat.DOCX:
                 if not DOCX_AVAILABLE:
                     raise ValueError("DOCX export requires python-docx library")
-                result = self._export_to_docx(content, filename, metadata, title)
+                result = self._export_to_docx(content, safe_filename, metadata, title)
 
             elif export_format == ExportFormat.TXT:
-                result = self._export_to_txt(content, filename, metadata)
+                result = self._export_to_txt(content, safe_filename, metadata)
 
             else:
                 raise ValueError(f"Unsupported export format: {export_format}")
@@ -128,22 +164,44 @@ class DocumentExporter:
             result.success = True
 
             logger.info(
-                f"Exported document '{filename}' to {export_format.value} "
+                f"Exported document '{safe_filename}' to {export_format.value} "
                 f"({result.file_size} bytes, {duration_ms:.2f}ms)"
             )
 
             return result
 
-        except Exception as e:
+        except ValueError as e:
+            # User input error
             duration_ms = (datetime.now() - start_time).total_seconds() * 1000
-            logger.error(f"Failed to export document '{filename}': {str(e)}")
-
+            logger.warning(f"Export validation failed for '{safe_filename}': {e}")
             return ExportResult(
                 success=False,
                 format=export_format,
                 file_size=0,
                 duration_ms=duration_ms,
                 error_message=str(e)
+            )
+        except (PermissionError, IOError) as e:
+            # File system error
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            logger.error(f"File system error exporting '{safe_filename}': {e}")
+            return ExportResult(
+                success=False,
+                format=export_format,
+                file_size=0,
+                duration_ms=duration_ms,
+                error_message=f"Failed to write export file: {str(e)}"
+            )
+        except Exception as e:
+            # Unexpected error
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            logger.error(f"Unexpected error exporting '{safe_filename}': {e}", exc_info=True)
+            return ExportResult(
+                success=False,
+                format=export_format,
+                file_size=0,
+                duration_ms=duration_ms,
+                error_message=f"Unexpected export error: {type(e).__name__}: {str(e)}"
             )
 
     def export_batch(
@@ -220,7 +278,7 @@ class DocumentExporter:
                 'CustomTitle',
                 parent=styles['Heading1'],
                 fontSize=18,
-                textColor=RGBColor(0, 0, 0),
+                textColor=colors.black if colors else None,
                 alignment=TA_CENTER,
                 spaceAfter=30
             )
@@ -233,7 +291,7 @@ class DocumentExporter:
                 'Metadata',
                 parent=styles['Normal'],
                 fontSize=9,
-                textColor=RGBColor(128, 128, 128)
+                textColor=colors.grey if colors else None
             )
             for key, value in metadata.items():
                 metadata_text = f"{key}: {value}"
@@ -250,12 +308,11 @@ class DocumentExporter:
         )
 
         # Split content into paragraphs
-        paragraphs = content.split('\n\n')
+        paragraphs = self._split_content_into_paragraphs(content)
         for para in paragraphs:
-            if para.strip():
-                # Escape special characters
-                escaped_para = para.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                story.append(Paragraph(escaped_para, content_style))
+            # Escape special characters
+            escaped_para = para.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            story.append(Paragraph(escaped_para, content_style))
 
         # Build PDF
         doc.build(story)
@@ -299,11 +356,10 @@ class DocumentExporter:
             doc.add_paragraph()  # Empty paragraph for spacing
 
         # Add content
-        paragraphs = content.split('\n\n')
+        paragraphs = self._split_content_into_paragraphs(content)
         for para in paragraphs:
-            if para.strip():
-                p = doc.add_paragraph(para)
-                p.style = 'Normal'
+            p = doc.add_paragraph(para)
+            p.style = 'Normal'
 
         # Save document
         doc.save(output_path)
@@ -372,6 +428,44 @@ class DocumentExporter:
             formats.append(ExportFormat.DOCX.value)
 
         return formats
+
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        Sanitize filename to prevent path traversal and invalid characters.
+
+        Args:
+            filename: Original filename
+
+        Returns:
+            Sanitized filename safe for file system
+        """
+        # Remove path traversal attempts
+        safe_name = filename.replace('..', '').replace('/', '').replace('\\', '')
+
+        # Remove null bytes
+        safe_name = safe_name.replace('\x00', '')
+
+        # Remove leading/trailing spaces and dots
+        safe_name = safe_name.strip('. ')
+
+        # Ensure filename is not empty after sanitization
+        if not safe_name:
+            safe_name = 'document'
+
+        return safe_name
+
+    def _split_content_into_paragraphs(self, content: str) -> List[str]:
+        """
+        Split content into paragraphs, filtering empty ones.
+
+        Args:
+            content: Document content
+
+        Returns:
+            List of non-empty paragraph strings
+        """
+        paragraphs = content.split('\n\n')
+        return [p.strip() for p in paragraphs if p.strip()]
 
 
 # Convenience function for quick exports
