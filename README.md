@@ -57,12 +57,14 @@ Modern enterprises face critical challenges in knowledge management:
   - Query result caching with Redis
   - **Gzip compression for API responses** - Reduces bandwidth by 50-80% for large JSON responses
   - <3s response time for 95th percentile queries
+  - **Query Performance Monitoring** - Track latency, tokens, sources, and confidence scores for all queries
 
 - **📊 Observability & Monitoring**
   - LangSmith integration for debugging
   - Arize Phoenix for production monitoring
   - Answer relevancy scoring (RAGAS metrics)
   - Cost tracking per query
+  - **Performance metrics collection** - Automatic tracking of query execution with percentiles (p50, p95, p99)
 
 - **🔒 Enterprise-Ready**
   - API rate limiting (per-key and IP-based)
@@ -1344,6 +1346,99 @@ webhook_service.register_webhook(
     )
 )
 ```
+
+---
+
+#### Query Performance Monitoring
+
+The Enterprise RAG System includes comprehensive performance monitoring for all query executions, providing detailed metrics to optimize and debug your RAG pipeline.
+
+**Metrics Tracked:**
+- Query execution time (latency in milliseconds)
+- Number of tokens used (for LLM queries)
+- Number of sources retrieved
+- Confidence scores
+- Query status (success/error)
+- Error messages (if applicable)
+
+**Automatic Tracking:**
+Performance metrics are automatically collected for all query endpoints when the monitoring middleware is enabled.
+
+**Response Headers:**
+All API responses include performance tracking headers:
+- `X-Request-ID` - Unique identifier for the request
+- `X-Request-Time-Ms` - Total request processing time in milliseconds
+
+**Programmatic Access:**
+
+```python
+from app.core.performance import get_performance_monitor
+
+# Get performance monitor instance
+monitor = get_performance_monitor()
+
+# Get query statistics
+stats = monitor.get_statistics()
+print(f"Average latency: {stats['avg_latency_ms']:.2f}ms")
+print(f"p95 latency: {stats['p95_latency_ms']:.2f}ms")
+print(f"Success rate: {stats['success_rate']:.2%}")
+print(f"Total queries: {stats['total_queries']}")
+
+# Get recent queries
+recent = monitor.get_recent_queries(limit=10)
+for query in recent:
+    print(f"Query: {query['query'][:50]}...")
+    print(f"  Latency: {query['latency_ms']:.2f}ms")
+    print(f"  Status: {query['status']}")
+
+# Get specific query metrics
+metrics = monitor.get_query_metrics(request_id)
+if metrics:
+    print(f"Query: {metrics.query}")
+    print(f"Latency: {metrics.latency_ms}ms")
+    print(f"Tokens: {metrics.tokens_used}")
+```
+
+**Manual Query Tracking:**
+
+For custom endpoints or advanced use cases, use the `QueryPerformanceTracker` context manager:
+
+```python
+from app.middleware.monitoring import QueryPerformanceTracker
+
+async def custom_query_handler(query: str):
+    tracker = QueryPerformanceTracker(
+        query=query,
+        metadata={"user_id": "user123", "collection": "hr-policies"}
+    )
+
+    with tracker:
+        # Execute your query
+        result = await execute_query(query)
+
+        # Update metrics
+        tracker.set_metrics(
+            tokens_used=result.tokens_used,
+            sources_count=len(result.sources),
+            confidence=result.confidence
+        )
+
+        return result
+```
+
+**Performance Statistics:**
+- `total_queries` - Total number of queries tracked
+- `avg_latency_ms` - Average query latency
+- `p50_latency_ms` - Median query latency (50th percentile)
+- `p95_latency_ms` - 95th percentile query latency
+- `p99_latency_ms` - 99th percentile query latency
+- `success_rate` - Percentage of successful queries
+- `avg_tokens_used` - Average tokens used per query
+- `avg_sources_count` - Average sources retrieved per query
+- `avg_confidence` - Average confidence score
+
+**Thread Safety:**
+The performance monitor is thread-safe and can handle concurrent query executions in production environments.
 
 ---
 
