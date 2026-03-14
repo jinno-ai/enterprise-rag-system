@@ -33,6 +33,7 @@ class QueryRequest(BaseModel):
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
     enable_autocorrect: bool = Field(False, description="Enable query spell correction")
+    user_id: Optional[str] = Field(None, description="Optional user identifier for query tracking")
 
 
 class QueryResponse(BaseModel):
@@ -51,6 +52,7 @@ class BatchQueryRequest(BaseModel):
     top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
+    user_id: Optional[str] = Field(None, description="Optional user identifier for query tracking")
 
 
 @router.post(
@@ -118,6 +120,9 @@ async def query(
     try:
         # Apply autocorrect if enabled
         from app.services.autocorrect import AutocorrectService
+        from app.services.suggestion import get_suggestion_service
+
+        suggestion_service = get_suggestion_service()
 
         query_to_process = query_req.query
         if query_req.enable_autocorrect:
@@ -145,6 +150,13 @@ async def query(
             rerank=query_req.rerank,
             collection=query_req.collection or "default"
         )
+
+        # Track query for future suggestions
+        try:
+            suggestion_service.track_query(query_req.query, query_req.user_id)
+        except Exception as tracking_error:
+            # Don't fail the query if tracking fails
+            logger.warning(f"Query tracking failed: {tracking_error}")
 
         return QueryResponse(
             answer=result.answer,
@@ -220,6 +232,11 @@ async def batch_query(
         List of QueryResponse objects
     """
     try:
+        from app.services.suggestion import get_suggestion_service
+
+        suggestion_service = get_suggestion_service()
+
+
         # Execute batch query
         results = await pipeline.batch_query(
             questions=batch_req.queries,
@@ -228,6 +245,15 @@ async def batch_query(
             use_hybrid=batch_req.use_hybrid,
             filter_dict=batch_req.filters
         )
+
+        # Track all queries for future suggestions
+        for query in batch_req.queries:
+            try:
+                suggestion_service.track_query(query, batch_req.user_id)
+            except Exception as tracking_error:
+                # Don't fail the batch if tracking fails
+                logger.warning(f"Query tracking failed for batch query: {tracking_error}")
+
 
         responses = []
         for result in results:

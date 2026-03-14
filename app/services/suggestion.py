@@ -9,6 +9,7 @@ Provides intelligent query suggestions based on:
 """
 
 import logging
+import threading
 from typing import List, Dict, Any, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -60,6 +61,7 @@ class QueryHistoryTracker:
     Tracks user query history for personalized suggestions.
 
     Maintains in-memory history with automatic expiration of old queries.
+    Thread-safe for concurrent access.
     """
 
     def __init__(self, max_history_size: int = 1000, history_ttl_days: int = 30):
@@ -71,6 +73,8 @@ class QueryHistoryTracker:
         self.global_frequency: Counter = Counter()
         # Structure: {query: last_timestamp}
         self.last_seen: Dict[str, datetime] = {}
+        # Thread safety
+        self._lock = threading.RLock()
 
     def add_query(self, query: str, user_id: Optional[str] = None) -> None:
         """
@@ -80,27 +84,28 @@ class QueryHistoryTracker:
             query: The query string
             user_id: Optional user identifier for personalization
         """
-        timestamp = datetime.now()
-        normalized_query = query.strip().lower()
+        with self._lock:
+            timestamp = datetime.now()
+            normalized_query = query.strip().lower()
 
-        if not normalized_query:
-            return
+            if not normalized_query:
+                return
 
-        # Add to user-specific history
-        if user_id:
-            user_history_list = self.user_history[user_id]
-            user_history_list.append((normalized_query, timestamp))
+            # Add to user-specific history
+            if user_id:
+                user_history_list = self.user_history[user_id]
+                user_history_list.append((normalized_query, timestamp))
 
-            # Trim history if needed
-            if len(user_history_list) > self.max_history_size:
-                user_history_list = user_history_list[-self.max_history_size:]
-                self.user_history[user_id] = user_history_list
+                # Trim history if needed
+                if len(user_history_list) > self.max_history_size:
+                    user_history_list = user_history_list[-self.max_history_size:]
+                    self.user_history[user_id] = user_history_list
 
-        # Update global statistics
-        self.global_frequency[normalized_query] += 1
-        self.last_seen[normalized_query] = timestamp
+            # Update global statistics
+            self.global_frequency[normalized_query] += 1
+            self.last_seen[normalized_query] = timestamp
 
-        logger.debug(f"Recorded query: {normalized_query} for user: {user_id}")
+            logger.debug(f"Recorded query: {normalized_query} for user: {user_id}")
 
     def get_user_history(
         self,
@@ -119,27 +124,28 @@ class QueryHistoryTracker:
         Returns:
             List of query strings
         """
-        if user_id not in self.user_history:
-            return []
+        with self._lock:
+            if user_id not in self.user_history:
+                return []
 
-        history = self.user_history[user_id]
-        cutoff_time = datetime.now() - timedelta(seconds=min_age_seconds) if min_age_seconds else None
+            history = self.user_history[user_id]
+            cutoff_time = datetime.now() - timedelta(seconds=min_age_seconds) if min_age_seconds else None
 
-        # Filter by age if specified
-        if cutoff_time:
-            history = [(q, t) for q, t in history if t >= cutoff_time]
+            # Filter by age if specified
+            if cutoff_time:
+                history = [(q, t) for q, t in history if t >= cutoff_time]
 
-        # Get unique queries, most recent first
-        seen = set()
-        recent_queries = []
-        for query, timestamp in reversed(history):
-            if query not in seen:
-                recent_queries.append(query)
-                seen.add(query)
-                if len(recent_queries) >= limit:
-                    break
+            # Get unique queries, most recent first
+            seen = set()
+            recent_queries = []
+            for query, timestamp in reversed(history):
+                if query not in seen:
+                    recent_queries.append(query)
+                    seen.add(query)
+                    if len(recent_queries) >= limit:
+                        break
 
-        return recent_queries
+            return recent_queries
 
     def get_trending_queries(
         self,
@@ -156,20 +162,21 @@ class QueryHistoryTracker:
         Returns:
             List of (query, frequency) tuples
         """
-        # Filter by minimum frequency
-        filtered = {
-            query: freq for query, freq in self.global_frequency.items()
-            if freq >= min_frequency
-        }
+        with self._lock:
+            # Filter by minimum frequency
+            filtered = {
+                query: freq for query, freq in self.global_frequency.items()
+                if freq >= min_frequency
+            }
 
-        # Sort by frequency and recency
-        trending = sorted(
-            filtered.items(),
-            key=lambda x: (x[1], self.last_seen.get(x[0], datetime.min)),
-            reverse=True
-        )
+            # Sort by frequency and recency
+            trending = sorted(
+                filtered.items(),
+                key=lambda x: (x[1], self.last_seen.get(x[0], datetime.min)),
+                reverse=True
+            )
 
-        return trending[:limit]
+            return trending[:limit]
 
     def cleanup_old_entries(self) -> int:
         """
@@ -178,28 +185,29 @@ class QueryHistoryTracker:
         Returns:
             Number of entries removed
         """
-        cutoff_time = datetime.now() - timedelta(days=self.history_ttl_days)
-        removed = 0
+        with self._lock:
+            cutoff_time = datetime.now() - timedelta(days=self.history_ttl_days)
+            removed = 0
 
-        # Clean user histories
-        for user_id in list(self.user_history.keys()):
-            user_history_list = self.user_history[user_id]
-            original_length = len(user_history_list)
+            # Clean user histories
+            for user_id in list(self.user_history.keys()):
+                user_history_list = self.user_history[user_id]
+                original_length = len(user_history_list)
 
-            # Remove old entries
-            self.user_history[user_id] = [
-                (query, timestamp) for query, timestamp in user_history_list
-                if timestamp >= cutoff_time
-            ]
+                # Remove old entries
+                self.user_history[user_id] = [
+                    (query, timestamp) for query, timestamp in user_history_list
+                    if timestamp >= cutoff_time
+                ]
 
-            removed += original_length - len(self.user_history[user_id])
+                removed += original_length - len(self.user_history[user_id])
 
-            # Remove empty histories
-            if not self.user_history[user_id]:
-                del self.user_history[user_id]
+                # Remove empty histories
+                if not self.user_history[user_id]:
+                    del self.user_history[user_id]
 
-        logger.info(f"Cleaned up {removed} old history entries")
-        return removed
+            logger.info(f"Cleaned up {removed} old history entries")
+            return removed
 
 
 class QuerySuggestionService:
@@ -490,13 +498,16 @@ class QuerySuggestionService:
         self.history_tracker.add_query(query, user_id)
 
 
-# Global instance
+# Global instance with thread-safe initialization
 _suggestion_service: Optional[QuerySuggestionService] = None
+_suggestion_lock = threading.Lock()
 
 
 def get_suggestion_service() -> QuerySuggestionService:
-    """Get or create the global suggestion service instance"""
+    """Get or create the global suggestion service instance (thread-safe)"""
     global _suggestion_service
     if _suggestion_service is None:
-        _suggestion_service = QuerySuggestionService()
+        with _suggestion_lock:
+            if _suggestion_service is None:  # Double-checked locking
+                _suggestion_service = QuerySuggestionService()
     return _suggestion_service
