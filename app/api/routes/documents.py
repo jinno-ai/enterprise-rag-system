@@ -2,6 +2,7 @@
 Document Management API Routes
 
 This module defines API endpoints for document ingestion and management.
+Supports both synchronous and asynchronous processing modes.
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status, BackgroundTasks
@@ -11,12 +12,30 @@ from pathlib import Path
 import tempfile
 import os
 import uuid
+import asyncio
 
 from app.core.logging_config import get_logger
 
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def validate_path_safety(file_path: str) -> None:
+    """
+    Validate that a path doesn't contain path traversal attempts.
+
+    Args:
+        file_path: The path to validate
+
+    Raises:
+        HTTPException: If path contains traversal attempts
+    """
+    if ".." in file_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid path: path traversal detected"
+        )
 
 
 class DocumentIngestRequest(BaseModel):
@@ -140,8 +159,11 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         from app.core.embeddings import get_embedding_model
         from app.core.vectordb import get_vector_db
         from app.core.config import get_settings
-        
+
         settings = get_settings()
+
+        # Validate path safety before loading
+        validate_path_safety(request.source_path)
 
         # Load documents
         logger.info(f"Loading documents from: {request.source_path}")
@@ -370,7 +392,7 @@ async def get_stats() -> DocumentStats:
 
         vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
         vector_db.connect()
-        
+
         stats = vector_db.get_stats()
 
         # Extract collection names from stats
@@ -381,7 +403,7 @@ async def get_stats() -> DocumentStats:
             total_chunks=stats.get('total_vectors', 0),
             collections=collection_names if collection_names else ["default"]
         )
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -629,3 +651,200 @@ async def get_batch_status(task_id: str) -> BatchStatusResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve task status: {str(e)}"
         )
+
+
+# Async processing endpoints
+
+class AsyncIngestRequest(BaseModel):
+    """Request model for async document ingestion"""
+    source_path: str = Field(..., description="Path to documents to ingest")
+    collection: Optional[str] = Field(None, description="Collection name")
+    chunk_size: int = Field(1000, description="Chunk size for splitting")
+    chunk_overlap: int = Field(200, description="Chunk overlap")
+
+
+class AsyncIngestResponse(BaseModel):
+    """Response model for async document ingestion"""
+    success: bool
+    task_id: str
+    message: str
+    queue_position: Optional[int] = None
+
+
+class TaskStatusResponse(BaseModel):
+    """Response model for task status"""
+    task_id: str
+    status: str
+    documents_processed: int
+    chunks_created: int
+    error_message: Optional[str]
+    created_at: str
+    started_at: Optional[str]
+    completed_at: Optional[str]
+
+
+class TaskListResponse(BaseModel):
+    """Response model for task list"""
+    tasks: List[Dict[str, Any]]
+    total_count: int
+    queue_size: int
+    active_tasks: int
+
+
+@router.post("/ingest/async", response_model=AsyncIngestResponse)
+async def ingest_documents_async(request: AsyncIngestRequest) -> AsyncIngestResponse:
+    """
+    Submit document ingestion for asynchronous background processing.
+
+    This endpoint returns immediately with a task ID, allowing large document
+    collections to be processed in the background without blocking the API.
+
+    Args:
+        request: Ingestion request with source path and parameters
+
+    Returns:
+        AsyncIngestResponse with task_id for tracking
+    """
+    try:
+        from app.services.document_processor import get_processor
+
+        # Validate path safety before submitting
+        validate_path_safety(request.source_path)
+
+        # Get processor and submit task
+        processor = get_processor()
+        task_id = await processor.submit_task(
+            source_path=request.source_path,
+            collection=request.collection,
+            chunk_size=request.chunk_size,
+            chunk_overlap=request.chunk_overlap
+        )
+
+        queue_size = await processor.get_queue_size()
+
+        return AsyncIngestResponse(
+            success=True,
+            task_id=task_id,
+            message="Document ingestion submitted for background processing",
+            queue_position=queue_size
+        )
+
+    except asyncio.QueueFull:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task queue is full. Please try again later."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit task: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(task_id: str) -> TaskStatusResponse:
+    """
+    Get the status of an async document processing task.
+
+    Args:
+        task_id: Task ID to check
+
+    Returns:
+        TaskStatusResponse with current task status
+    """
+    try:
+        from app.services.document_processor import get_processor
+
+        processor = get_processor()
+        task_dict = await processor.get_task_status(task_id)
+
+        if not task_dict:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
+        return TaskStatusResponse(**task_dict)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get task status: {str(e)}"
+        )
+
+
+@router.get("/tasks", response_model=TaskListResponse)
+async def list_tasks(
+    status: Optional[str] = None,
+    limit: int = 50
+) -> TaskListResponse:
+    """
+    List all document processing tasks, optionally filtered by status.
+
+    Args:
+        status: Optional status filter (pending, processing, completed, failed)
+        limit: Maximum number of tasks to return
+
+    Returns:
+        TaskListResponse with list of tasks
+    """
+    try:
+        from app.services.document_processor import get_processor, TaskStatus
+
+        processor = get_processor()
+
+        # Parse status filter
+        status_filter = None
+        if status:
+            try:
+                status_filter = TaskStatus(status)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid status: {status}. Must be one of: pending, processing, completed, failed"
+                )
+
+        # Get tasks
+        tasks = await processor.list_tasks(status_filter=status_filter, limit=limit)
+
+        # Get stats
+        queue_size = await processor.get_queue_size()
+        active_tasks = await processor.get_active_tasks_count()
+
+        return TaskListResponse(
+            tasks=tasks,
+            total_count=len(tasks),
+            queue_size=queue_size,
+            active_tasks=active_tasks
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list tasks: {str(e)}"
+        )
+
+
+@router.delete("/tasks/{task_id}")
+async def cancel_task(task_id: str) -> Dict[str, Any]:
+    """
+    Cancel a pending or processing task.
+
+    Note: This is a placeholder for future implementation.
+    Currently, tasks cannot be cancelled once started.
+
+    Args:
+        task_id: Task ID to cancel
+
+    Returns:
+        Cancellation confirmation
+    """
+    # TODO: Implement task cancellation
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Task cancellation not yet implemented"
+    )

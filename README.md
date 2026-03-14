@@ -826,6 +826,42 @@ python scripts/ingest.py --source notion --notion-token YOUR_TOKEN --collection 
 python scripts/ingest.py --source confluence --space-key MYSPACE --collection confluence-docs
 ```
 
+### ⚡ Async Document Processing
+
+For production environments with large document collections, the system supports **asynchronous background processing**:
+
+```bash
+# Submit async ingestion job (returns immediately)
+curl -X POST http://localhost:8000/documents/ingest/async \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "./data/large-docs",
+    "collection": "enterprise-kb",
+    "chunk_size": 1000,
+    "chunk_overlap": 200
+  }'
+
+# Response: {"success": true, "task_id": "abc-123-def", "message": "Document ingestion submitted..."}
+
+# Check task status
+curl http://localhost:8000/documents/tasks/abc-123-def
+
+# List all tasks
+curl http://localhost:8000/documents/tasks?status=processing&limit=10
+```
+
+**Benefits of Async Processing**:
+- 🚀 **Non-blocking API**: Submit large jobs and get immediate response
+- 📊 **Task Tracking**: Monitor progress with real-time status updates
+- 🔄 **Concurrent Processing**: Handle multiple ingestion jobs simultaneously
+- 🎯 **Production Ready**: Designed for high-throughput enterprise environments
+
+**Task States**:
+- `pending`: Task queued, waiting to start
+- `processing`: Actively processing documents
+- `completed`: Successfully processed
+- `failed`: Error occurred (see `error_message` field)
+
 ---
 
 ## 📊 Performance Benchmarks
