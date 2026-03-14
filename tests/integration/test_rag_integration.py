@@ -8,7 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def sample_documents():
 
 @pytest.mark.integration
 def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
-    """Test complete RAG pipeline"""
+    """Test complete RAG pipeline initialization"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
@@ -65,7 +65,6 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
         max_tokens=500
     )
 
-    # Test query
     assert pipeline is not None
     assert retriever is not None
 
@@ -99,9 +98,8 @@ def test_vector_db_operations(mock_embed, temp_vector_db, sample_documents):
     )
 
     # Test search
-    query = "artificial intelligence and machine learning"
     mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536)]
-    query_embedding = embedding_model.embed_query(query)
+    query_embedding = embedding_model.embed_query("test")
     results = vector_db.search(query_embedding, top_k=3)
 
     assert len(results) > 0
@@ -171,7 +169,9 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+@patch('openai.chat.completions.create')
+@patch('openai.embeddings.create')
+def test_batch_query(mock_embed, mock_chat, sample_documents):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -184,14 +184,27 @@ def test_batch_query():
     vector_db.create_index(dimension=1536)
 
     embedding_model = get_embedding_model()
+
+    # Ingest documents first
+    mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536) for _ in sample_documents]
+    texts = [doc["text"] for doc in sample_documents]
+    embeddings = embedding_model.embed_texts(texts)
+    vector_db.upsert(embeddings, [f"doc_{i}" for i in range(len(texts))], [doc["metadata"] for doc in sample_documents])
+
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
+
+    # Mock OpenAI for query
+    mock_embed.return_value.data = [Mock(embedding=[0.1] * 1536)]
+    mock_chat.return_value.choices = [Mock(message=Mock(content="Test answer"))]
+    mock_chat.return_value.usage.total_tokens = 50
 
     # Batch query
     questions = ["Question 1?", "Question 2?", "Question 3?"]
     responses = pipeline.batch_query(questions)
 
     assert len(responses) == len(questions)
+    assert responses[0].answer == "Test answer"
 
 
 @pytest.mark.integration
@@ -229,7 +242,9 @@ def test_retrieval_with_filters(mock_embed):
     )
 
     # Should only return tech documents
-    assert len(results) <= 2
+    assert len(results) == 2
+    for r in results:
+        assert r.metadata["category"] == "tech"
 
 
 @pytest.mark.integration
