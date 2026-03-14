@@ -5,7 +5,7 @@ This module orchestrates the complete RAG workflow.
 """
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import time
 from openai import AsyncOpenAI
 

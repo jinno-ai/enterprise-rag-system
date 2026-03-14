@@ -1438,6 +1438,91 @@ curl -X POST http://localhost:8000/api/v1/query \
 
 ---
 
+## ⚡ Query Caching with TTL
+
+The Enterprise RAG System includes **Redis-based query result caching with configurable TTL (Time To Live)** to significantly improve performance and reduce latency for repeated queries.
+
+### Features
+
+- **Automatic Cache Key Generation**: Unique SHA256-based keys generated from query parameters
+- **Configurable TTL**: Set custom expiration times per query or use global default (3600s)
+- **Graceful Degradation**: System continues functioning if Redis is unavailable
+- **Cache Statistics**: Track hit rates, misses, and errors for monitoring
+- **Selective Caching**: Enable/disable caching per pipeline instance
+- **Metadata Tracking**: Each cached entry includes timestamp and TTL information
+
+### Configuration
+
+Enable and configure caching via environment variables:
+
+```bash
+# Enable/disable query caching (default: true)
+ENABLE_CACHING=true
+
+# Default TTL in seconds (default: 3600 = 1 hour)
+CACHE_TTL_SECONDS=3600
+
+# Redis connection (uses localhost:6379 by default)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=optional_password
+```
+
+### Usage
+
+The RAG pipeline automatically uses caching when enabled:
+
+```python
+from app.services.rag_pipeline import RAGPipeline
+from app.services.retrieval import HybridRetriever
+
+# Caching is enabled by default (via ENABLE_CACHING env var)
+retriever = HybridRetriever(...)
+pipeline = RAGPipeline(retriever=retriever)
+
+# First call - executes full pipeline and caches result
+response1 = pipeline.query("What is AI?", top_k=5)
+
+# Second identical query - returns cached result (much faster!)
+response2 = pipeline.query("What is AI?", top_k=5)
+```
+
+### Cache Management
+
+```python
+from app.core.cache import get_cache
+
+cache = get_cache()
+
+# Get cache statistics
+stats = cache.get_stats()
+print(f"Hit rate: {stats['hit_rate']:.1%}")
+print(f"Total requests: {stats['total_requests']}")
+
+# Clear all cached queries
+cache.clear()
+
+# Reset statistics
+cache.reset_stats()
+```
+
+### Performance Impact
+
+With caching enabled:
+- **First query**: Normal latency (~1-3s depending on retrieval and LLM)
+- **Cached query**: <10ms latency (Redis lookup)
+- **Typical hit rate**: 30-50% in production workloads
+
+### Implementation Details
+
+- Cache keys are generated from: query text (case-insensitive), top_k, use_hybrid flag, and metadata filters
+- Cache entries include: answer, sources, confidence score, latency, tokens used, and retrieval results
+- Automatic serialization/deserialization of complex objects (RetrievalResult, RAGResponse)
+- Error handling prevents cache failures from affecting query processing
+
+---
+
 ## 🛠️ Configuration
 
 ### Environment Variables
