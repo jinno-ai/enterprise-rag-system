@@ -73,6 +73,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **IP-based rate limiting** with proxy header support
   - **PostgreSQL connection pooling** with asyncpg for production workloads
   - **Request ID tracking** for distributed tracing and debugging
+  - **Webhook notifications** for document processing events
 
 ---
 
@@ -712,6 +713,71 @@ groups:
 | Documents | `GET /api/v1/documents/` | `GET /api/v2/documents/` |
 
 **Note**: v1 API remains fully supported and maintained. New applications should consider using v2 for enhanced features.
+
+#### Webhook Notifications
+
+The Enterprise RAG System supports webhook notifications for document processing events, enabling real-time integration with external systems.
+
+**Supported Event Types:**
+- `document_processing_completed` - Fired when document ingestion completes successfully
+- `document_processing_failed` - Fired when document processing fails
+- `task_completed` - Fired when a background task completes
+- `task_failed` - Fired when a background task fails
+
+**Webhook Payload Example:**
+```json
+{
+  "event_type": "document_processing_completed",
+  "task_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2026-03-15T12:34:56.789Z",
+  "collection": "hr-policies",
+  "data": {
+    "documents_processed": 10,
+    "chunks_created": 50,
+    "processing_time_ms": 2341
+  },
+  "retry_count": 0
+}
+```
+
+**Headers Included:**
+- `X-Webhook-ID` - Webhook identifier
+- `X-Event-Type` - Event type
+- `X-Task-ID` - Associated task ID
+- `X-Timestamp` - Event timestamp
+- `X-Webhook-Signature` - HMAC signature (if secret is configured)
+
+**Configuration:**
+```bash
+# Enable webhooks
+WEBHOOK_ENABLED=true
+WEBHOOK_TIMEOUT_SECONDS=10
+WEBHOOK_MAX_RETRIES=3
+WEBHOOK_RETRY_DELAY_SECONDS=60
+```
+
+**Implementation Example:**
+```python
+from app.services.webhook import (
+    start_webhook_service,
+    WebhookConfig,
+    WebhookEventType
+)
+
+# Start webhook service
+await start_webhook_service()
+
+# Register webhook endpoint
+webhook_service = get_webhook_service()
+webhook_service.register_webhook(
+    "my-webhook",
+    WebhookConfig(
+        url="https://your-app.com/webhook",
+        secret="your_webhook_secret",
+        events=[WebhookEventType.DOCUMENT_PROCESSING_COMPLETED]
+    )
+)
+```
 
 ---
 

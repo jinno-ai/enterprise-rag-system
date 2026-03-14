@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     arize_api_key: Optional[str] = Field(None, env="ARIZE_API_KEY")
     enable_metrics: bool = Field(True, env="ENABLE_METRICS")
 
+    # Webhooks
+    webhook_enabled: bool = Field(False, env="WEBHOOK_ENABLED")
+    webhook_timeout_seconds: int = Field(10, env="WEBHOOK_TIMEOUT_SECONDS")
+    webhook_max_retries: int = Field(3, env="WEBHOOK_MAX_RETRIES")
+    webhook_retry_delay_seconds: int = Field(60, env="WEBHOOK_RETRY_DELAY_SECONDS")
+
     # Application
     app_name: str = "Enterprise RAG System"
     app_version: str = "0.2.0"
