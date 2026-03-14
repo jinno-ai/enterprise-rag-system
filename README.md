@@ -714,6 +714,92 @@ groups:
 
 **Note**: v1 API remains fully supported and maintained. New applications should consider using v2 for enhanced features.
 
+#### Batch Query API
+
+The Batch Query API allows you to process multiple queries efficiently in a single request, reducing network overhead and improving throughput for bulk operations.
+
+**v1 Batch Query:**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queries": [
+      "What is our company policy on remote work?",
+      "Explain the vacation accrual policy",
+      "What are the health insurance benefits?"
+    ],
+    "collection": "hr-policies",
+    "top_k": 5
+  }'
+```
+
+**v2 Batch Query (Enhanced):**
+```bash
+curl -X POST http://localhost:8000/api/v2/query/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queries": [
+      "What is our company policy on remote work?",
+      "Explain the vacation accrual policy",
+      "What are the health insurance benefits?"
+    ],
+    "top_k": 5,
+    "include_metadata": true
+  }'
+```
+
+**Response:**
+```json
+[
+  {
+    "answer": "According to our Employee Handbook (section 3.2), remote work is...",
+    "sources": [
+      {
+        "document": "employee-handbook-2024.pdf",
+        "page": 12,
+        "relevance_score": 0.89,
+        "text": "Remote work policy excerpt..."
+      }
+    ],
+    "confidence": 0.87,
+    "latency_ms": 2341,
+    "tokens_used": 1245
+  },
+  {
+    "answer": "Our vacation policy allows employees to accrue...",
+    "sources": [...],
+    "confidence": 0.85,
+    "latency_ms": 2156,
+    "tokens_used": 1189
+  },
+  {
+    "answer": "The health insurance benefits include...",
+    "sources": [...],
+    "confidence": 0.91,
+    "latency_ms": 2432,
+    "tokens_used": 1321
+  }
+]
+```
+
+**Key Features:**
+- **Efficient Processing**: Process multiple queries in a single API call
+- **Error Handling**: Individual query failures don't affect other queries
+- **Flexible Parameters**: Support for collection filtering, top_k, and hybrid search
+- **Response Ordering**: Responses are returned in the same order as queries
+- **Performance**: Reduces network overhead compared to individual queries
+
+**Use Cases:**
+- Bulk document analysis
+- Multiple question answering
+- Comparative analysis across different queries
+- Batch processing in automated workflows
+
+**Parameters:**
+- `queries` (required): Array of query strings (1-100 queries)
+- `collection` (optional): Target collection for all queries
+- `top_k` (optional): Number of documents to retrieve per query (default: 5, range: 1-20)
+
 #### Webhook Notifications
 
 The Enterprise RAG System supports webhook notifications for document processing events, enabling real-time integration with external systems.
