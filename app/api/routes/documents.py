@@ -13,12 +13,14 @@ import tempfile
 import os
 import uuid
 import asyncio
+import logging
 
 from app.core.logging_config import get_logger
 
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
 
 
 def validate_path_safety(file_path: str) -> None:

@@ -9,7 +9,7 @@ import asyncio
 from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 
@@ -39,7 +39,7 @@ class ProcessingTask:
     documents_processed: int = 0
     chunks_created: int = 0
     error_message: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
@@ -304,7 +304,7 @@ class BackgroundTaskProcessor:
 
         start_time = time.time()
         task.status = TaskStatus.PROCESSING
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(timezone.utc)
 
         try:
             # Import here to avoid circular imports
@@ -353,7 +353,7 @@ class BackgroundTaskProcessor:
             task.status = TaskStatus.COMPLETED
             task.documents_processed = len(documents)
             task.chunks_created = len(chunks)
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
 
             processing_time = (time.time() - start_time) * 1000
 
@@ -375,7 +375,7 @@ class BackgroundTaskProcessor:
 
             task.status = TaskStatus.FAILED
             task.error_message = str(e)
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
 
             processing_time = (time.time() - start_time) * 1000
 

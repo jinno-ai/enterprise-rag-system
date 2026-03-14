@@ -8,6 +8,9 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from dataclasses import dataclass
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.core.logging_config import get_logger
 

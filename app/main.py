@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
-import uuid
+from typing import Optional
 
 from app.core.config import get_settings
 from app.core.vectordb import get_vector_db
@@ -20,12 +20,13 @@ from app.core.cache import CacheManager
 from app.core import metrics
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
-from app.api.routes import query, health, ingest
+from app.api.routes import query, health, ingest, documents
 from app.middleware.validation import ValidationMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.middleware.compression import CompressionMiddleware
 
 
 # Setup logging first
@@ -35,9 +36,16 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
+# Global instances (initialized at startup)
+_rag_pipeline: Optional[RAGPipeline] = None
+_initialization_error: Optional[str] = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown"""
+    global _rag_pipeline, _initialization_error
+
     # Startup
     logger.info("Starting Enterprise RAG System...")
 
@@ -79,7 +87,7 @@ async def lifespan(app: FastAPI):
         )
 
         logger.info("Initializing RAG pipeline...")
-        rag_pipeline = RAGPipeline(
+        _rag_pipeline = RAGPipeline(
             retriever=retriever,
             llm_client=openai_client,
             llm_model=settings.llm_model,
@@ -87,18 +95,27 @@ async def lifespan(app: FastAPI):
             max_tokens=settings.llm_max_tokens,
             cache_manager=cache_manager
         )
-        app.state.rag_pipeline = rag_pipeline
+        app.state.rag_pipeline = _rag_pipeline
+
+        logger.info("Starting background document processor...")
+        from app.services.document_processor import start_processor
+        await start_processor()
 
         logger.info("Enterprise RAG System ready!")
+        _initialization_error = None
 
     except Exception as e:
         logger.error(f"Initialization failed: {e}", exc_info=True)
-        raise RuntimeError(f"Enterprise RAG System initialization failed: {e}") from e
+        _initialization_error = f"Initialization failed: {e}"
+        _rag_pipeline = None
+        # Allow app to start; health/dependencies reflect the error
 
     yield
 
     # Shutdown
     logger.info("Shutting down Enterprise RAG System...")
+    from app.services.document_processor import stop_processor
+    await stop_processor()
 
 
 # Create FastAPI app
@@ -234,11 +251,20 @@ app.add_middleware(
     log_suspicious=True
 )
 
+# Add compression middleware
+# Compresses responses larger than minimum_size threshold when client supports gzip
+app.add_middleware(
+    CompressionMiddleware,
+    minimum_size=settings.compression_minimum_size,
+    compresslevel=settings.compression_level
+)
+
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
+app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 
 
 @app.get("/", tags=["Health"])
@@ -252,6 +278,13 @@ async def root(request: Request):
         "docs": "/docs",
         "redoc": "/redoc"
     }
+
+
+def get_rag_pipeline() -> RAGPipeline:
+    """Get the global RAG pipeline instance"""
+    if _rag_pipeline is None:
+        raise RuntimeError("RAG pipeline not initialized")
+    return _rag_pipeline
 
 
 if __name__ == "__main__":
