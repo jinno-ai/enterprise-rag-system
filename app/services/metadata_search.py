@@ -1,8 +1,36 @@
 """
 Metadata Search Service for RAG System
 
-This module implements advanced metadata filtering and search capabilities.
-It provides a flexible interface for filtering documents by metadata fields.
+This module implements application-level metadata filtering and search capabilities.
+
+**Architecture Note:**
+This service provides application-level filtering for cases where:
+1. Vector DB doesn't support native filtering (e.g., FAISS)
+2. Complex filtering logic is needed (regex, contains, exists operators)
+3. Custom business logic is required in the application layer
+
+For simple equality/inequality filters with Pinecone, consider using the native
+filter_dict parameter directly in vector_db.search() for better performance:
+
+    # Simple filters - use native Pinecone filtering (recommended)
+    results = vector_db.search(
+        query_vector=embedding,
+        filter_dict={"department": "HR", "year": {"$gte": 2023}}
+    )
+
+    # Complex filters - use this MetadataSearchService
+    service = MetadataSearchService(vector_db, embedding_model)
+    results = service.search_by_metadata(
+        query="policy",
+        filters=[
+            MetadataFilter("department", FilterOperator.CONTAINS, "HR"),
+            MetadataFilter("email", FilterOperator.REGEX, r"^[a-z]+@company\.com$")
+        ]
+    )
+
+**When to use each approach:**
+- Native filter_dict: eq, ne, gt, gte, lt, lte, in, nin (better performance)
+- This service: contains, regex, exists, cross-field logic (more flexible)
 """
 
 from typing import List, Dict, Any, Optional, Union
@@ -241,9 +269,11 @@ class MetadataSearchService:
             ]
 
         # Perform semantic search
+        # Fetch extra results only when filtering to account for filtered-out documents
+        fetch_multiplier = 2 if filters else 1
         search_results = self.vector_db.search(
             query_vector=self.embedding_model.embed_query(query),
-            top_k=top_k * 2  # Get more results for filtering
+            top_k=top_k * fetch_multiplier
         )
 
         # Apply metadata filters
@@ -280,9 +310,10 @@ class MetadataSearchService:
                 top_k=top_k
             )
         else:
-            # Get a sample of documents
+            # Get a sample of documents using a generic query
+            # Using a generic term is more reliable than empty string across different embedding models
             search_results = self.vector_db.search(
-                query_vector=self.embedding_model.embed_query(""),
+                query_vector=self.embedding_model.embed_query("document"),
                 top_k=top_k
             )
 
