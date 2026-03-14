@@ -250,41 +250,30 @@ class TestStreamingResponseGenerator:
         assert "metadata" in chunk_types
         assert "done" in chunk_types
 
+    @patch('app.services.streaming.StreamingResponseGenerator._call_llm_streaming')
     @pytest.mark.asyncio
-    async def test_stream_response_with_token_streaming(self, mock_pipeline):
+    async def test_stream_response_with_token_streaming(self, mock_streaming_call, mock_pipeline):
         """Test streaming with token-level streaming enabled"""
-        # Mock the _call_llm_streaming method to simulate OpenAI streaming
-        mock_stream_result = []
+        # Create a mock OpenAI streaming response
+        class MockChunk:
+            def __init__(self, content):
+                self.choices = [type('obj', (object,), {'delta': type('obj', (object,), {'content': content})()})()]
 
-        def mock_streaming_call(prompt):
-            """Create a mock OpenAI streaming response"""
-            class MockChunk:
-                def __init__(self, content):
-                    self.choices = [MockDelta(content)]
+        class MockStream:
+            def __init__(self):
+                self.chunks = [
+                    MockChunk("This "),
+                    MockChunk("is "),
+                    MockChunk("a "),
+                    MockChunk("test "),
+                    MockChunk("answer.")
+                ]
+                self.usage = type('obj', (object,), {'total_tokens': 100})()
 
-            class MockDelta:
-                def __init__(self, content):
-                    self.content = content
-                    self.delta = self
+            def __iter__(self):
+                return iter(self.chunks)
 
-            class MockStream:
-                def __init__(self):
-                    self.chunks = [
-                        MockChunk("This "),
-                        MockChunk("is "),
-                        MockChunk("a "),
-                        MockChunk("test "),
-                        MockChunk("answer.")
-                    ]
-                    self.usage = Mock()
-                    self.usage.total_tokens = 100
-
-                def __iter__(self):
-                    return iter(self.chunks)
-
-            return MockStream()
-
-        mock_pipeline._call_llm_streaming = mock_streaming_call
+        mock_streaming_call.return_value = MockStream()
 
         generator = StreamingResponseGenerator(
             pipeline=mock_pipeline,
