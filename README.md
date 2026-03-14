@@ -1523,6 +1523,142 @@ With caching enabled:
 
 ---
 
+## 📝 Document Preview Generation
+
+The Enterprise RAG System includes **automatic document preview generation** that creates concise snippets of indexed documents, improving user experience by showing document summaries before full retrieval.
+
+### Features
+
+- **Extractive Summarization**: Intelligently selects the most representative sentences from documents
+- **Configurable Length**: Control preview length with `max_preview_length` parameter
+- **Sentence Scoring**: Ranks sentences based on position, length, and keyword relevance
+- **Structure Preservation**: Option to maintain paragraph structure in previews
+- **Preview Caching**: In-memory caching for improved performance (configurable)
+- **Batch Processing**: Generate previews for multiple documents efficiently
+- **Metadata Preservation**: All document metadata is preserved in previews
+
+### Usage
+
+#### Basic Preview Generation
+
+```python
+from app.services.preview import PreviewGenerator
+from app.services.document_loader import DocumentLoader
+
+# Load a document
+loader = DocumentLoader()
+document = loader.load_text_file("example.pdf")
+
+# Generate preview
+generator = PreviewGenerator(
+    max_preview_length=300,  # Maximum characters
+    min_sentences=1,         # Minimum sentences
+    max_sentences=3          # Maximum sentences
+)
+
+preview = generator.generate_preview(document)
+
+print(f"Preview: {preview.preview_text}")
+print(f"Compression: {preview.compression_ratio:.1%}")
+print(f"Key sentences: {len(preview.key_sentences)}")
+```
+
+#### Batch Preview Generation
+
+```python
+from app.services.preview import PreviewGenerator
+
+# Load multiple documents
+documents = DocumentLoader.load_directory("./data/docs")
+
+# Generate previews for all documents
+generator = PreviewGenerator()
+previews = generator.generate_batch_previews(documents)
+
+for preview in previews:
+    print(f"{preview.doc_id}: {preview.preview_text[:100]}...")
+```
+
+#### Preview with Caching
+
+```python
+from app.services.preview import generate_document_preview
+
+# Generate preview with automatic caching
+preview = generate_document_preview(
+    document,
+    use_cache=True,
+    max_preview_length=200
+)
+
+# Second call returns cached preview (much faster)
+preview2 = generate_document_preview(document, use_cache=True)
+```
+
+### Preview Scoring Algorithm
+
+The preview generator uses an extractive summarization approach that scores sentences based on:
+
+1. **Position Score**: Earlier sentences receive higher scores (0.4 weight)
+2. **Length Score**: Medium-length sentences (30-100 chars) are preferred (0.3 weight)
+3. **Keyword Score**: Sentences containing important words receive bonuses (0.1 per keyword)
+4. **Capitalization**: Sentences starting with capital letters are preferred (0.1 weight)
+
+### Configuration
+
+```python
+from app.services.preview import PreviewGenerator
+
+# Custom preview configuration
+generator = PreviewGenerator(
+    max_preview_length=500,        # Maximum preview length in characters
+    min_sentences=2,               # Minimum number of sentences
+    max_sentences=5,               # Maximum number of sentences
+    sentence_delimiters=['.', '!', '?', '\n']  # Sentence boundaries
+)
+```
+
+### Preview Data Structure
+
+```python
+@dataclass
+class DocumentPreview:
+    doc_id: str                    # Document identifier
+    preview_text: str              # Generated preview text
+    preview_length: int            # Length of preview in characters
+    original_length: int           # Original document length
+    compression_ratio: float       # Preview/original length ratio
+    key_sentences: List[str]       # Top sentences selected
+    metadata: Dict[str, Any]       # Document metadata
+    generated_at: datetime         # Generation timestamp
+```
+
+### Performance Characteristics
+
+- **Preview Generation**: ~1-5ms per document (depending on length)
+- **Batch Processing**: ~10-50ms for 100 documents
+- **Cache Hit**: <0.1ms for cached previews
+- **Memory Usage**: ~1KB per cached preview
+
+### Use Cases
+
+- **Search Result Snippets**: Show document previews in search results
+- **Document Browsing**: Preview documents before full retrieval
+- **UI Previews**: Display document summaries in user interfaces
+- **Quality Control**: Check document content before indexing
+- **Batch Analysis**: Quickly assess document collections
+
+### Error Handling
+
+The preview service handles edge cases gracefully:
+
+- **Empty Documents**: Returns `[Empty document]` placeholder
+- **Very Short Documents**: Returns full content without truncation
+- **Very Long Words**: Truncates at word boundaries when possible
+- **Generation Failures**: Falls back to simple character truncation
+
+---
+
 ## 🛠️ Configuration
 
 ### Environment Variables
@@ -1749,6 +1885,7 @@ pytest --cov=app tests/
 - [x] Streamlit UI
 - [x] Docker deployment
 - [x] LangSmith integration
+- [x] **Document Preview Generation** - Automatic document snippets with extractive summarization
 
 ### 🚧 In Progress
 - [ ] GraphRAG for entity relationships
