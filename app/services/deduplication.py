@@ -357,12 +357,24 @@ class DocumentDeduplicator:
             logger.info("Deduplication history cleared")
 
 
+# Global deduplicator instance for singleton pattern
+_deduplicator: Optional[DocumentDeduplicator] = None
+_deduplicator_config: Dict[str, Any] = {
+    "strategy": "exact",
+    "similarity_threshold": 0.95
+}
+_deduplicator_lock = Lock()
+
+
 def get_deduplicator(
     strategy: str = "exact",
     similarity_threshold: float = 0.95
 ) -> DocumentDeduplicator:
     """
-    Factory function to get a configured deduplicator.
+    Factory function to get a configured deduplicator (singleton pattern).
+
+    Returns the global deduplicator instance, reconfiguring it if
+    the parameters differ from the current configuration.
 
     Args:
         strategy: Strategy type ("exact" or "similarity")
@@ -374,14 +386,46 @@ def get_deduplicator(
     Raises:
         ValueError: If strategy type is unknown
     """
-    if strategy == "exact":
-        dedup_strategy = ExactHashDeduplication()
-    elif strategy == "similarity":
-        dedup_strategy = SimilarityDeduplication(similarity_threshold=similarity_threshold)
-    else:
-        raise ValueError(
-            f"Unknown strategy: {strategy}. "
-            f"Supported strategies: 'exact', 'similarity'"
-        )
+    global _deduplicator, _deduplicator_config
 
-    return DocumentDeduplicator(strategy=dedup_strategy)
+    with _deduplicator_lock:
+        # Check if we need to recreate the deduplicator with new config
+        if (_deduplicator is None or
+            _deduplicator_config["strategy"] != strategy or
+            _deduplicator_config["similarity_threshold"] != similarity_threshold):
+
+            # Create new strategy
+            if strategy == "exact":
+                dedup_strategy = ExactHashDeduplication()
+            elif strategy == "similarity":
+                dedup_strategy = SimilarityDeduplication(similarity_threshold=similarity_threshold)
+            else:
+                raise ValueError(
+                    f"Unknown strategy: {strategy}. "
+                    f"Supported strategies: 'exact', 'similarity'"
+                )
+
+            # Create new deduplicator
+            _deduplicator = DocumentDeduplicator(strategy=dedup_strategy)
+            _deduplicator_config = {
+                "strategy": strategy,
+                "similarity_threshold": similarity_threshold
+            }
+
+            logger.info(f"Created new deduplicator with strategy: {strategy}")
+
+        return _deduplicator
+
+
+def reset_deduplicator() -> None:
+    """
+    Reset the global deduplicator instance.
+
+    This clears all history and creates a fresh instance on next call.
+    Useful for testing or when starting a new ingestion session.
+    """
+    global _deduplicator
+    with _deduplicator_lock:
+        _deduplicator = None
+        logger.info("Global deduplicator reset")
+

@@ -227,7 +227,28 @@ async def upload_document(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Unsupported file type: {file_ext}"
                 )
-            
+
+            # Apply deduplication if enabled
+            if enable_deduplication:
+                logger.info(f"Deduplication enabled with strategy: {deduplication_strategy}")
+                from app.services.deduplication import get_deduplicator
+
+                deduplicator = get_deduplicator(strategy=deduplication_strategy)
+                documents, dedup_result = deduplicator.deduplicate(documents)
+
+                if len(documents) == 0:
+                    # All documents were duplicates
+                    os.remove(tmp_path)
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Document is a duplicate and was not ingested"
+                    )
+
+                logger.info(
+                    f"Deduplication complete: {dedup_result.unique_documents}/{dedup_result.total_documents} "
+                    f"unique documents ({dedup_result.duplicates_removed} duplicates removed)"
+                )
+
             # Split and embed
             splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
             chunks = splitter.split_documents(documents)
@@ -249,13 +270,18 @@ async def upload_document(
             
             if hasattr(vector_db, 'save'):
                 vector_db.save("./data/faiss_index.bin")
-            
+
+            # Build message with deduplication info if applicable
+            base_msg = f"Successfully uploaded and ingested {file.filename}"
+            if enable_deduplication:
+                base_msg += f" ({dedup_result.duplicates_removed} duplicate pages removed)"
+
             return DocumentIngestResponse(
                 success=True,
                 documents_processed=len(documents),
                 chunks_created=len(chunks),
                 collection=collection or "default",
-                message=f"Successfully uploaded and ingested {file.filename}"
+                message=base_msg
             )
         
         finally:
@@ -1116,4 +1142,33 @@ async def clear_deduplication_history() -> Dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear deduplication history: {str(e)}"
+        )
+
+
+@router.post("/deduplication/reset")
+async def reset_deduplication() -> Dict[str, Any]:
+    """
+    Reset the deduplication system completely.
+
+    Clears all history, hash caches, and creates a fresh deduplicator instance.
+    Useful for starting a new ingestion session.
+
+    Returns:
+        Status of reset operation
+    """
+    try:
+        from app.services.deduplication import reset_deduplicator
+
+        reset_deduplicator()
+
+        return {
+            "success": True,
+            "message": "Deduplication system reset successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to reset deduplication: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset deduplication: {str(e)}"
         )
