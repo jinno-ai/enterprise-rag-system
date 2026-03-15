@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import pickle
 from dataclasses import dataclass
 
 
@@ -61,6 +63,16 @@ class VectorDB(ABC):
     @abstractmethod
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
+        pass
+
+    @abstractmethod
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents to vector database"""
         pass
 
 
@@ -187,6 +199,26 @@ class PineconeVectorDB(VectorDB):
             "index_fullness": stats.index_fullness
         }
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents to Pinecone"""
+        import hashlib
+
+        ids = []
+        for doc in documents:
+            doc_id = hashlib.md5(doc.encode()).hexdigest()
+            ids.append(doc_id)
+
+        # Add text to metadata
+        for i, meta in enumerate(metadatas):
+            meta["text"] = documents[i]
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
 
 class FAISSVectorDB(VectorDB):
     """FAISS vector database implementation (for local development)"""
@@ -240,6 +272,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -274,7 +307,9 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # Search a larger pool if filter_dict is present to allow for filtering
+        search_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,14 +319,48 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filtering
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents to FAISS index (convenience method)"""
+        import hashlib
+
+        ids = []
+        for doc in documents:
+            doc_id = hashlib.md5(doc.encode()).hexdigest()
+            ids.append(doc_id)
+
+        # Add text to metadata for retrieval
+        for i, meta in enumerate(metadatas):
+            meta["text"] = documents[i]
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
     
     def delete(self, ids: List[str]) -> None:
         """Delete vectors from FAISS (not directly supported, requires rebuild)"""
