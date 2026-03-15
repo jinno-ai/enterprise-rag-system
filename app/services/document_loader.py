@@ -22,6 +22,14 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# Try to import transcription service
+try:
+    from app.services.transcription import AudioTranscriptionService, TranscriptionError
+    TRANSCRIPTION_AVAILABLE = True
+except ImportError:
+    TRANSCRIPTION_AVAILABLE = False
+
+
 @dataclass
 class Document:
     """Document representation"""
@@ -116,38 +124,121 @@ class DocumentLoader:
         return Document(content=content, metadata=metadata)
     
     @staticmethod
+    def load_audio(
+        file_path: str,
+        model_size: str = "base",
+        language: Optional[str] = None
+    ) -> Document:
+        """
+        Load and transcribe an audio file
+
+        Args:
+            file_path: Path to the audio file
+            model_size: Whisper model size (tiny, base, small, medium, large)
+            language: Language code for transcription or None for auto-detect
+
+        Returns:
+            Document with transcribed text as content
+
+        Raises:
+            FileNotFoundError: If audio file doesn't exist
+            ImportError: If transcription service is not available
+            TranscriptionError: If transcription fails
+        """
+        if not TRANSCRIPTION_AVAILABLE:
+            raise ImportError(
+                "Audio transcription requires openai-whisper. "
+                "Install it with: pip install openai-whisper"
+            )
+
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Audio file not found: {file_path}")
+
+        logger.info(f"Transcribing audio file: {path.name}")
+
+        try:
+            from app.services.transcription import (
+                TranscriptionConfig,
+                AudioTranscriptionService
+            )
+
+            config = TranscriptionConfig(model_size=model_size, language=language)
+            service = AudioTranscriptionService(config)
+            result = service.transcribe_file(file_path)
+
+            metadata = {
+                'source': str(path),
+                'filename': path.name,
+                'file_type': 'audio',
+                'audio_format': path.suffix[1:],
+                'language': result.get('language', 'unknown'),
+                'transcription_model': model_size,
+                'duration_seconds': result.get('duration', 0)
+            }
+
+            logger.info(f"Successfully transcribed: {path.name}")
+            return Document(content=result['text'], metadata=metadata)
+
+        except TranscriptionError as e:
+            logger.error(f"Transcription failed for {path.name}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to process audio file {path.name}: {e}")
+            raise
+
+    @staticmethod
     def load_directory(
         directory_path: str,
         file_extensions: Optional[List[str]] = None,
-        recursive: bool = True
+        recursive: bool = True,
+        transcribe_audio: bool = False,
+        audio_model_size: str = "base"
     ) -> List[Document]:
         """Load all documents from a directory"""
         if file_extensions is None:
             file_extensions = ['.txt', '.md', '.pdf']
-        
+            if transcribe_audio:
+                file_extensions.extend(['.mp3', '.wav', '.mp4', '.m4a', '.webm'])
+
         directory = Path(directory_path)
         if not directory.exists():
             raise FileNotFoundError(f"Directory not found: {directory_path}")
-        
+
         documents = []
-        
+
         # Get all files
         if recursive:
             files = [f for f in directory.rglob('*') if f.is_file()]
         else:
             files = [f for f in directory.glob('*') if f.is_file()]
-        
+
         # Filter by extension
         files = [f for f in files if f.suffix.lower() in file_extensions]
 
         logger.info(f"Found {len(files)} files to process")
+
+        # Audio format extensions
+        audio_extensions = {'.mp3', '.wav', '.mp4', '.m4a', '.webm', '.mpga', '.mpeg'}
 
         # Load each file
         for file_path in files:
             try:
                 ext = file_path.suffix.lower()
 
-                if ext == '.pdf':
+                if ext in audio_extensions:
+                    if transcribe_audio and TRANSCRIPTION_AVAILABLE:
+                        doc = DocumentLoader.load_audio(
+                            str(file_path),
+                            model_size=audio_model_size
+                        )
+                        documents.append(doc)
+                    else:
+                        logger.warning(
+                            f"Skipping audio file {file_path.name}. "
+                            "Enable transcribe_audio=True to process audio files."
+                        )
+                elif ext == '.pdf':
                     docs = DocumentLoader.load_pdf(str(file_path))
                     documents.extend(docs)
                 elif ext == '.md':

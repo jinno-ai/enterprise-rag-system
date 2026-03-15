@@ -34,6 +34,7 @@ Modern enterprises face critical challenges in knowledge management:
 
 - **📄 Multi-Format Document Support**
   - PDF, Markdown, Docx, HTML, Confluence, Notion
+  - **Audio Transcription** - Transcribe audio files (MP3, WAV, M4A, WebM) using OpenAI's Whisper model
   - Intelligent chunking with semantic awareness
   - Metadata extraction and preservation
 
@@ -1923,6 +1924,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
+# Optional: Install Whisper for audio transcription
+pip install openai-whisper
+
 # Configure environment
 cp .env.example .env
 # Edit .env with your API keys
@@ -1998,7 +2002,7 @@ npm install
 
 ### Ingest Your Documents
 ```bash
-# Ingest local documents
+# Ingest local documents (including audio files)
 python scripts/ingest.py --source ./data/documents --collection my-docs
 
 # Ingest from Notion
@@ -2006,7 +2010,45 @@ python scripts/ingest.py --source notion --notion-token YOUR_TOKEN --collection 
 
 # Ingest from Confluence
 python scripts/ingest.py --source confluence --space-key MYSPACE --collection confluence-docs
+
+# Ingest audio files with transcription
+python scripts/ingest.py --source ./data/audio --collection audio-kb --transcribe-audio
 ```
+
+#### Audio Transcription
+
+The system supports automatic transcription of audio files using OpenAI's Whisper model:
+
+```python
+from app.services.document_loader import DocumentLoader
+
+# Load and transcribe an audio file
+audio_doc = DocumentLoader.load_audio(
+    "meeting.mp3",
+    model_size="base",  # tiny, base, small, medium, large
+    language="en"       # Optional: auto-detect if not specified
+)
+
+print(f"Transcribed: {audio_doc.content}")
+print(f"Language: {audio_doc.metadata['language']}")
+print(f"Duration: {audio_doc.metadata['duration_seconds']}s")
+
+# Load directory with automatic audio transcription
+docs = DocumentLoader.load_directory(
+    "./data/meetings",
+    transcribe_audio=True,
+    audio_model_size="base"
+)
+```
+
+**Supported Audio Formats**: MP3, WAV, M4A, MP4, WebM, MPEG
+
+**Whisper Model Sizes**:
+- `tiny` (39M) - Fastest, lower accuracy
+- `base` (74M) - Good balance (recommended)
+- `small` (244M) - Better accuracy
+- `medium` (769M) - High accuracy
+- `large` (1550M) - Best accuracy, slowest
 
 ### ⚡ Async Document Processing
 
