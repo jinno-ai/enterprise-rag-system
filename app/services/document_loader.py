@@ -3,7 +3,7 @@ Document Loading and Processing
 
 This module handles loading documents from various sources and formats.
 
-Note: For advanced chunking strategies (fixed, semantic, recursive),
+For advanced chunking strategies (fixed, sentence-based, recursive),
 see app/services/chunking.py which provides a more comprehensive
 chunking framework with multiple strategies.
 """
@@ -167,77 +167,63 @@ class DocumentLoader:
 
 
 class TextSplitter:
-    """Split documents into smaller chunks for embedding"""
-    
+    """
+    Split documents into smaller chunks for embedding.
+
+    This is a backward-compatible wrapper around the new chunking module.
+    For new code, use app.services.chunking.DocumentChunker directly.
+
+    Deprecated: Use app.services.chunking.DocumentChunker for new code.
+    """
+
     def __init__(
         self,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
         separators: Optional[List[str]] = None
     ):
+        # Import here to avoid circular dependency
+        from app.services.chunking import RecursiveCharacterChunkingStrategy
+
+        self._strategy = RecursiveCharacterChunkingStrategy(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=separators
+        )
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.separators = separators or ["\n\n", "\n", ". ", " ", ""]
-    
+
     def split_text(self, text: str) -> List[str]:
-        """Split text into chunks"""
-        chunks = []
-        
-        # Try each separator in order
-        for separator in self.separators:
-            if separator in text:
-                parts = text.split(separator)
-                current_chunk = ""
-                
-                for part in parts:
-                    # If adding this part exceeds chunk_size, save current chunk
-                    if len(current_chunk) + len(part) > self.chunk_size:
-                        if current_chunk:
-                            chunks.append(current_chunk.strip())
-                            # Start new chunk with overlap
-                            overlap_text = current_chunk[-self.chunk_overlap:]
-                            current_chunk = overlap_text + separator + part
-                        else:
-                            current_chunk = part
-                    else:
-                        if current_chunk:
-                            current_chunk += separator + part
-                        else:
-                            current_chunk = part
-                
-                # Add the last chunk
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                
-                break
-        
-        # If no separator worked, use fixed-size chunking
-        if not chunks and text:
-            for i in range(0, len(text), self.chunk_size - self.chunk_overlap):
-                chunk = text[i:i + self.chunk_size]
-                if chunk.strip():
-                    chunks.append(chunk.strip())
-        
-        return chunks
-    
+        """
+        Split text into chunks.
+
+        Returns:
+            List of chunk strings (for backward compatibility)
+        """
+        chunks = self._strategy.chunk(text)
+        return [chunk.content for chunk in chunks]
+
     def split_documents(self, documents: List[Document]) -> List[Document]:
-        """Split documents into smaller chunks"""
+        """
+        Split documents into smaller chunks.
+
+        Returns:
+            List of chunked Documents (for backward compatibility)
+        """
         chunked_documents = []
-        
+
         for doc in documents:
-            chunks = self.split_text(doc.content)
-            
-            for i, chunk in enumerate(chunks):
-                # Create new document for each chunk
-                chunk_metadata = doc.metadata.copy()
-                chunk_metadata['chunk_index'] = i
-                chunk_metadata['total_chunks'] = len(chunks)
+            chunks = self._strategy.chunk(doc.content, metadata=doc.metadata)
+
+            for chunk in chunks:
+                chunk_metadata = chunk.metadata.copy()
                 chunk_metadata['original_doc_id'] = doc.doc_id
-                
+
                 chunked_doc = Document(
-                    content=chunk,
+                    content=chunk.content,
                     metadata=chunk_metadata
                 )
                 chunked_documents.append(chunked_doc)
-        
+
         return chunked_documents

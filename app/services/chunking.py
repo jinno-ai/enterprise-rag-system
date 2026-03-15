@@ -22,7 +22,7 @@ class ChunkingStrategy(str, Enum):
     """Chunking strategy types"""
     FIXED = "fixed"
     RECURSIVE = "recursive"
-    SEMANTIC = "semantic"
+    SENTENCE = "sentence"  # Sentence-based chunking (groups sentences into chunks)
 
 
 @dataclass
@@ -50,11 +50,17 @@ class ChunkingConfig:
 
     def __post_init__(self):
         """Validate configuration"""
-        if self.chunk_size < 100:
-            raise ValueError(f"Chunk size must be at least 100, got {self.chunk_size}")
-        if self.chunk_overlap >= self.chunk_size:
+        if not 100 <= self.chunk_size <= 100_000:
             raise ValueError(
-                f"Overlap cannot exceed chunk size (got {self.chunk_overlap} >= {self.chunk_size})"
+                f"Chunk size must be between 100 and 100000, got {self.chunk_size}"
+            )
+        if not 0 <= self.chunk_overlap < self.chunk_size:
+            raise ValueError(
+                f"Overlap must be between 0 and chunk_size (got {self.chunk_overlap})"
+            )
+        if not isinstance(self.strategy, ChunkingStrategy):
+            raise ValueError(
+                f"Invalid strategy: {self.strategy}. Must be ChunkingStrategy enum"
             )
 
 
@@ -300,25 +306,25 @@ class RecursiveCharacterChunkingStrategy:
         return text[-self.chunk_overlap:]
 
 
-class SemanticChunkingStrategy:
+class SentenceBasedChunkingStrategy:
     """
-    Semantic chunking strategy.
+    Sentence-based chunking strategy.
 
-    Splits text based on semantic similarity, using embeddings to identify
-    natural topic boundaries. Creates more coherent chunks for RAG applications.
+    Splits text into sentences and groups them into chunks of target size.
+    Preserves sentence boundaries better than character-based splitting.
+
+    Note: This is a simplified approach. For true semantic chunking with
+    embedding-based similarity detection, use a dedicated semantic analysis
+    service or implement custom logic with embeddings.
     """
 
     def __init__(
         self,
         chunk_size: int = 1000,
-        chunk_overlap: int = 200,
-        similarity_threshold: float = 0.5,
-        embedding_model: Optional[str] = None
+        chunk_overlap: int = 200
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.similarity_threshold = similarity_threshold
-        self.embedding_model = embedding_model
 
         # Initialize fallback strategy
         self._fallback_strategy = RecursiveCharacterChunkingStrategy(
@@ -332,7 +338,7 @@ class SemanticChunkingStrategy:
         metadata: Optional[Dict[str, Any]] = None
     ) -> List[Chunk]:
         """
-        Split text based on semantic similarity.
+        Split text by grouping sentences into chunks.
 
         Args:
             text: Text to chunk
@@ -347,28 +353,25 @@ class SemanticChunkingStrategy:
         metadata = metadata or {}
 
         try:
-            # Try semantic chunking with embeddings
-            chunks = self._semantic_split(text, metadata)
+            # Split into sentences and group into chunks
+            chunks = self._sentence_based_split(text, metadata)
             return chunks
 
         except Exception as e:
             # Fall back to recursive chunking on error
-            logger.warning(f"Semantic chunking failed, falling back to recursive: {e}")
+            logger.warning(f"Sentence-based chunking failed, falling back to recursive: {e}")
             return self._fallback_strategy.chunk(text, metadata)
 
-    def _semantic_split(
+    def _sentence_based_split(
         self,
         text: str,
         metadata: Dict[str, Any]
     ) -> List[Chunk]:
         """
-        Perform semantic splitting using embeddings.
+        Perform sentence-based splitting.
 
-        This is a simplified implementation. A production version would:
-        1. Split text into sentences
-        2. Get embeddings for each sentence
-        3. Calculate similarity between adjacent sentences
-        4. Split at points where similarity drops below threshold
+        Groups sentences into chunks based on size while preserving
+        sentence boundaries.
         """
         # Split into sentences (simplified)
         sentences = self._split_into_sentences(text)
@@ -446,7 +449,7 @@ class SemanticChunkingStrategy:
         for chunk in chunks:
             chunk.metadata["total_chunks"] = len(chunks)
 
-        logger.debug(f"Created {len(chunks)} semantic chunks")
+        logger.debug(f"Created {len(chunks)} sentence-based chunks")
         return chunks
 
     def _split_into_sentences(self, text: str) -> List[str]:
@@ -565,8 +568,8 @@ def get_chunker_for_strategy(config: ChunkingConfig) -> BaseChunkingStrategy:
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap
         )
-    elif config.strategy == ChunkingStrategy.SEMANTIC:
-        return SemanticChunkingStrategy(
+    elif config.strategy == ChunkingStrategy.SENTENCE:
+        return SentenceBasedChunkingStrategy(
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap
         )

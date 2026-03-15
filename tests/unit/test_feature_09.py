@@ -18,7 +18,7 @@ from app.services.chunking import (
     ChunkingStrategy,
     FixedSizeChunkingStrategy,
     RecursiveCharacterChunkingStrategy,
-    SemanticChunkingStrategy,
+    SentenceBasedChunkingStrategy,
     ChunkingConfig,
     Chunk,
     ChunkingResult,
@@ -83,7 +83,7 @@ class TestChunkingConfig:
 
     def test_config_validation_overlap_too_large(self):
         """Test that overlap cannot exceed chunk size"""
-        with pytest.raises(ValueError, match="Overlap cannot exceed chunk size"):
+        with pytest.raises(ValueError, match="Overlap must be between 0 and chunk_size"):
             ChunkingConfig(
                 chunk_size=100,
                 chunk_overlap=100  # overlap >= chunk_size should fail
@@ -91,8 +91,21 @@ class TestChunkingConfig:
 
     def test_config_validation_chunk_size_too_small(self):
         """Test that chunk size must be at least 100"""
-        with pytest.raises(ValueError, match="Chunk size must be at least 100"):
+        with pytest.raises(ValueError, match="Chunk size must be between 100 and 100000"):
             ChunkingConfig(chunk_size=50)
+
+    def test_config_validation_chunk_size_too_large(self):
+        """Test that chunk size has an upper bound"""
+        with pytest.raises(ValueError, match="Chunk size must be between 100 and 100000"):
+            ChunkingConfig(chunk_size=200_000)
+
+    def test_config_validation_negative_overlap(self):
+        """Test that overlap cannot be negative"""
+        with pytest.raises(ValueError, match="Overlap must be between 0 and chunk_size"):
+            ChunkingConfig(
+                chunk_size=1000,
+                chunk_overlap=-10
+            )
 
 
 class TestFixedSizeChunkingStrategy:
@@ -254,23 +267,20 @@ Third paragraph."""
             assert "chunk_index" in chunk.metadata
 
 
-class TestSemanticChunkingStrategy:
-    """Test suite for semantic chunking"""
+class TestSentenceBasedChunkingStrategy:
+    """Test suite for sentence-based chunking"""
 
     @pytest.fixture
     def strategy(self):
-        """Create semantic chunking strategy"""
-        # SemanticChunkingStrategy doesn't need mocked embeddings in this implementation
-        # It falls back to recursive chunking if embeddings fail
-        strategy = SemanticChunkingStrategy(
+        """Create sentence-based chunking strategy"""
+        strategy = SentenceBasedChunkingStrategy(
             chunk_size=200,
-            chunk_overlap=50,
-            similarity_threshold=0.5
+            chunk_overlap=50
         )
         return strategy
 
-    def test_chunk_by_semantic_similarity(self, strategy):
-        """Test chunking based on semantic similarity"""
+    def test_chunk_by_sentences(self, strategy):
+        """Test chunking by grouping sentences"""
         text = """This is about machine learning. ML is a subset of AI.
 
 Now let's talk about renewable energy. Solar and wind are important.
@@ -280,11 +290,13 @@ Back to AI topics. Deep learning is popular."""
         chunks = strategy.chunk(text)
 
         assert len(chunks) >= 1
-        # Should create chunks based on semantic shifts
-        # (This is a simplified test - real semantic chunking would use actual embeddings)
+        # Should create chunks that preserve sentence boundaries
+        for chunk in chunks:
+            # Chunks should end with sentence-ending punctuation
+            assert chunk.content.rstrip().endswith((".", "!", "?")) or chunk == chunks[-1]
 
-    def test_metadata_with_similarity_scores(self, strategy):
-        """Test that metadata includes similarity information"""
+    def test_metadata_preserved(self, strategy):
+        """Test that metadata includes sentence information"""
         text = "Topic one. " * 20 + "\n\n" + "Topic two. " * 20
 
         chunks = strategy.chunk(text, metadata={"source": "test.txt"})
@@ -293,19 +305,19 @@ Back to AI topics. Deep learning is popular."""
             assert "source" in chunk.metadata
             assert "chunk_index" in chunk.metadata
 
-    def test_handles_embedding_errors(self, strategy):
-        """Test graceful handling of embedding errors"""
+    def test_handles_splitting_errors(self, strategy):
+        """Test graceful handling of splitting errors"""
         text = "Some text here with more content to make it longer. " * 20
 
-        # Mock embedding failure by patching _semantic_split
-        with patch.object(strategy, '_semantic_split', side_effect=Exception("API Error")):
+        # Mock splitting failure
+        with patch.object(strategy, '_sentence_based_split', side_effect=Exception("Split Error")):
             chunks = strategy.chunk(text)
 
             # Should fall back to recursive chunking
             assert len(chunks) >= 1
 
     def test_empty_text(self, strategy):
-        """Test semantic chunking with empty text"""
+        """Test sentence-based chunking with empty text"""
         chunks = strategy.chunk("")
 
         assert len(chunks) == 0
@@ -411,19 +423,18 @@ class TestGetChunkerForStrategy:
 
         assert isinstance(chunker, RecursiveCharacterChunkingStrategy)
 
-    def test_get_semantic_strategy_chunker(self):
-        """Test getting chunker for semantic strategy"""
-        config = ChunkingConfig(strategy=ChunkingStrategy.SEMANTIC)
+    def test_get_sentence_strategy_chunker(self):
+        """Test getting chunker for sentence-based strategy"""
+        config = ChunkingConfig(strategy=ChunkingStrategy.SENTENCE)
         chunker = get_chunker_for_strategy(config)
 
-        assert isinstance(chunker, SemanticChunkingStrategy)
+        assert isinstance(chunker, SentenceBasedChunkingStrategy)
 
     def test_invalid_strategy(self):
         """Test handling of invalid strategy"""
-        config = ChunkingConfig(strategy="invalid")
-
-        with pytest.raises(ValueError, match="Unknown chunking strategy"):
-            get_chunker_for_strategy(config)
+        # Invalid strategy should fail during config validation
+        with pytest.raises(ValueError, match="Invalid strategy.*Must be ChunkingStrategy enum"):
+            ChunkingConfig(strategy="invalid")
 
 
 class TestChunkingResult:
