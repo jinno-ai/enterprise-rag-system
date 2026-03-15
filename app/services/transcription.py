@@ -6,7 +6,7 @@ It provides functionality to transcribe audio files and convert them to text for
 for further processing in the RAG pipeline.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 import logging
 import tempfile
@@ -214,7 +214,7 @@ class AudioTranscriptionService:
         }
         return audio_file.suffix.lower() in supported_extensions
 
-    def get_supported_formats(self) -> list[str]:
+    def get_supported_formats(self) -> List[str]:
         """Get list of supported audio formats"""
         return [ext[1:] for ext in {".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".wav", ".webm"}]
 

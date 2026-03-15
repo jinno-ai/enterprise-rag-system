@@ -72,7 +72,25 @@ def main():
         default="./data/faiss_index.bin",
         help="Path to FAISS index file (only for FAISS)"
     )
-
+    parser.add_argument(
+        "--transcribe-audio",
+        action="store_true",
+        help="Enable automatic transcription of audio files (requires openai-whisper)"
+    )
+    parser.add_argument(
+        "--audio-model-size",
+        type=str,
+        default="base",
+        choices=["tiny", "base", "small", "medium", "large"],
+        help="Whisper model size for audio transcription (default: base)"
+    )
+    parser.add_argument(
+        "--audio-language",
+        type=str,
+        default=None,
+        help="Language code for audio transcription (e.g., 'en', 'ja', 'zh'). Auto-detect if not specified"
+    )
+    
     args = parser.parse_args()
 
 logger.info("Enterprise RAG System - Document Ingestion starting")
@@ -83,7 +101,9 @@ logger.info("Enterprise RAG System - Document Ingestion starting")
 
         documents = DocumentLoader.load_directory(
             directory_path=args.source,
-            recursive=args.recursive
+            recursive=args.recursive,
+            transcribe_audio=args.transcribe_audio,
+            audio_model_size=args.audio_model_size
         )
 
         if not documents:

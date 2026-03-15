@@ -44,6 +44,10 @@ class DocumentIngestRequest(BaseModel):
     chunk_overlap: int = Field(200, description="Chunk overlap")
     enable_deduplication: bool = Field(False, description="Enable document deduplication")
     deduplication_strategy: str = Field("exact", description="Deduplication strategy: exact or similarity")
+    # Audio transcription settings
+    transcribe_audio: bool = Field(False, description="Enable automatic transcription of audio files")
+    audio_model_size: str = Field("base", description="Whisper model size for audio transcription")
+    audio_language: Optional[str] = Field(None, description="Language code for audio transcription (e.g., 'en', 'ja'). Auto-detect if not specified")
 
 
 class DocumentIngestResponse(BaseModel):
@@ -87,7 +91,11 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
 
         # Load documents
         logger.info(f"Loading documents from: {request.source_path}")
-        documents = DocumentLoader.load_directory(request.source_path)
+        documents = DocumentLoader.load_directory(
+            request.source_path,
+            transcribe_audio=request.transcribe_audio,
+            audio_model_size=request.audio_model_size
+        )
 
         if not documents:
             raise HTTPException(
@@ -222,10 +230,28 @@ async def upload_document(
                 documents = [DocumentLoader.load_markdown(tmp_path)]
             elif file_ext == '.txt':
                 documents = [DocumentLoader.load_text_file(tmp_path)]
+            elif file_ext in {'.mp3', '.wav', '.mp4', '.m4a', '.webm', '.mpga', '.mpeg'}:
+                # Audio file - transcribe it
+                try:
+                    documents = [DocumentLoader.load_audio(
+                        tmp_path,
+                        model_size="base",
+                        language=None  # Auto-detect
+                    )]
+                except ImportError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                        detail="Audio transcription requires openai-whisper. Install with: pip install openai-whisper"
+                    )
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Audio transcription failed: {str(e)}"
+                    )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unsupported file type: {file_ext}"
+                    detail=f"Unsupported file type: {file_ext}. Supported: pdf, md, txt, mp3, wav, m4a, webm, mp4"
                 )
 
             # Apply deduplication if enabled

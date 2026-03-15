@@ -2019,6 +2019,13 @@ python scripts/ingest.py --source ./data/audio --collection audio-kb --transcrib
 
 The system supports automatic transcription of audio files using OpenAI's Whisper model:
 
+**Note**: Audio transcription requires `openai-whisper` to be installed:
+```bash
+pip install openai-whisper
+```
+
+This is an optional feature - the system will function normally without it, but audio files will be skipped during ingestion.
+
 ```python
 from app.services.document_loader import DocumentLoader
 
