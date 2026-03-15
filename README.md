@@ -800,11 +800,11 @@ The Enterprise RAG System provides multiple document chunking strategies optimiz
    - Best for: General documents, mixed content
    - Use case: Articles, reports, documentation
 
-3. **Semantic Chunking** (`ChunkingStrategy.SEMANTIC`)
-   - Content-aware chunking based on semantic similarity
-   - Identifies natural topic boundaries
-   - Best for: Complex documents with distinct topics
-   - Use case: Research papers, technical docs, books
+3. **Sentence-Based Chunking** (`ChunkingStrategy.SENTENCE`)
+   - Splits text into sentences and groups them by size
+   - Preserves sentence boundaries for better readability
+   - Best for: Documents where sentence integrity is important
+   - Use case: Articles, documentation, narrative text
 
 **Usage Example:**
 
@@ -849,7 +849,7 @@ for result in results:
 
 - **Fixed-Size**: Use when processing speed is critical and documents are uniform
 - **Recursive**: Use for general-purpose RAG with mixed document types (recommended)
-- **Semantic**: Use for complex documents where topic shifts are important
+- **Sentence**: Use when preserving sentence boundaries is critical
 
 **Best Practices:**
 
