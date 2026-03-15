@@ -3,11 +3,18 @@ Health check endpoints
 """
 
 from fastapi import APIRouter, Request
-from typing import Dict
+from typing import Dict, Any, Optional
 
 from app.core.rate_limit import limiter
 
 router = APIRouter()
+
+
+def get_initialization_status(request: Request) -> tuple:
+    """Get initialization status from app state"""
+    rag_pipeline = getattr(request.app.state, 'rag_pipeline', None)
+    initialization_error = getattr(request.app.state, 'initialization_error', None)
+    return rag_pipeline, initialization_error
 
 
 @router.get(
@@ -21,27 +28,36 @@ router = APIRouter()
     tags=["Health"]
 )
 @limiter.limit("120/minute")
-async def health_check(request: Request) -> Dict[str, str]:
-    """Health check endpoint / ヘルスチェックエンドポイント
-
-    ## Response / レスポンス
-
-    - **status**: "healthy" if the API is running / APIが実行中の場合は"healthy"
-    - **version**: API version number / APIバージョン番号
-
-    ## Example Response / レスポンス例
-
-    ```json
-    {
-      "status": "healthy",
-      "version": "1.0.0"
-    }
-    ```
+async def health_check(request: Request) -> Dict[str, Any]:
     """
-    return {
-        "status": "healthy",
-        "version": "1.0.0"
-    }
+    Health check endpoint - reflects initialization status / 初期化状態を反映するヘルスチェック
+
+    Returns:
+        - status: "healthy", "unhealthy", or "initializing"
+        - version: application version
+        - error: error message if unhealthy
+    """
+    from app.core.config import get_settings
+    settings = get_settings()
+
+    rag_pipeline, initialization_error = get_initialization_status(request)
+
+    if initialization_error:
+        return {
+            "status": "unhealthy",
+            "version": settings.app_version,
+            "error": initialization_error
+        }
+    elif rag_pipeline is None:
+        return {
+            "status": "initializing",
+            "version": settings.app_version
+        }
+    else:
+        return {
+            "status": "healthy",
+            "version": settings.app_version
+        }
 
 
 @router.get(
@@ -55,39 +71,32 @@ async def health_check(request: Request) -> Dict[str, str]:
     tags=["Health"]
 )
 @limiter.limit("120/minute")
-async def detailed_health_check(request: Request) -> Dict[str, Dict[str, str]]:
-    """Detailed health check with service status / サービスステータスを含む詳細なヘルスチェック
+async def detailed_health_check(request: Request) -> Dict[str, Any]:
+    """Detailed health check with service status / サービスステータスを含む詳細なヘルスチェック"""
+    rag_pipeline, initialization_error = get_initialization_status(request)
 
-    ## Services Checked / チェックされるサービス
-
-    - **api**: API service status / APIサービスの状態
-    - **vector_db**: Vector database connection status / ベクトルデータベースの接続状態
-    - **llm**: LLM service availability / LLMサービスの可用性
-
-    ## Example Response / レスポンス例
-
-    ```json
-    {
-      "status": "healthy",
-      "version": "1.0.0",
-      "services": {
-        "api": "healthy",
-        "vector_db": "healthy",
-        "llm": "healthy"
-      }
-    }
-    ```
-    """
-    return {
-        "status": "healthy",
+    base_status = {
         "version": "1.0.0",
         "services": {
-            "api": "healthy",
-            "vector_db": "healthy",
-            "llm": "healthy"
+            "api": "healthy"
         }
     }
 
+    if initialization_error:
+        base_status["status"] = "unhealthy"
+        base_status["error"] = initialization_error
+        base_status["services"]["vector_db"] = "unhealthy"
+        base_status["services"]["llm"] = "unhealthy"
+    elif rag_pipeline is None:
+        base_status["status"] = "initializing"
+        base_status["services"]["vector_db"] = "initializing"
+        base_status["services"]["llm"] = "initializing"
+    else:
+        base_status["status"] = "healthy"
+        base_status["services"]["vector_db"] = "healthy"
+        base_status["services"]["llm"] = "healthy"
+
+    return base_status
 
 @router.get(
     "/cache/stats",

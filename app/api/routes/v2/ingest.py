@@ -16,6 +16,9 @@ from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime
 import logging
+from pathlib import Path
+
+from app.utils.path_validation import validate_path_safety
 
 
 router = APIRouter(tags=["ingest v2"])
@@ -101,6 +104,10 @@ async def upload_document_v2(
         IngestResponseV2 with job tracking information
     """
     try:
+        # Validate filename for path traversal attempts
+        if file.filename:
+            validate_path_safety(file.filename)
+
         job_id = str(uuid.uuid4())
 
         # Mock response for now
@@ -114,6 +121,8 @@ async def upload_document_v2(
             metadata={"filename": file.filename, "chunk_size": chunk_size}
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

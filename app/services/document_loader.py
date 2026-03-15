@@ -2,6 +2,10 @@
 Document Loading and Processing
 
 This module handles loading documents from various sources and formats.
+
+Note: For advanced chunking strategies (fixed, semantic, recursive),
+see app/services/chunking.py which provides a more comprehensive
+chunking framework with multiple strategies.
 """
 
 from typing import List, Dict, Any, Optional

@@ -37,16 +37,9 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
-# Global instances (initialized at startup)
-_rag_pipeline: Optional[RAGPipeline] = None
-_initialization_error: Optional[str] = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown"""
-    global _rag_pipeline, _initialization_error
-
     # Startup
     logger.info("Starting Enterprise RAG System...")
 
@@ -148,14 +141,22 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("Webhook service disabled (set WEBHOOK_ENABLED=true to enable)")
 
+        # Store error-free state for health check access
+        app.state.initialization_error = None
+
         logger.info("Enterprise RAG System ready!")
         _initialization_error = None
 
     except Exception as e:
         logger.error(f"Initialization failed: {e}", exc_info=True)
-        _initialization_error = f"Initialization failed: {e}"
+        error_msg = f"Initialization failed: {e}"
+        _initialization_error = error_msg
         _rag_pipeline = None
-        # Allow app to start; health/dependencies reflect the error
+        # Store error state for health check access
+        app.state.rag_pipeline = None
+        app.state.initialization_error = error_msg
+        # Allow app to start in degraded mode; health check reflects the error
+
 
     yield
 
@@ -339,10 +340,24 @@ async def root(request: Request):
 
 
 def get_rag_pipeline() -> RAGPipeline:
-    """Get the global RAG pipeline instance"""
-    if _rag_pipeline is None:
-        raise RuntimeError("RAG pipeline not initialized")
-    return _rag_pipeline
+    """
+    Get the global RAG pipeline instance
+
+    Deprecated: Use dependency injection with FastAPI's Depends instead.
+    This function is kept for backward compatibility.
+    """
+    # Try to get from app.state if available
+    import fastapi
+    current_app = fastapi.FastAPI()
+    if hasattr(current_app, 'state') and hasattr(current_app.state, 'rag_pipeline'):
+        pipeline = current_app.state.rag_pipeline
+        if pipeline is not None:
+            return pipeline
+
+    raise RuntimeError(
+        "RAG pipeline not initialized. "
+        "This application requires successful startup before accessing the pipeline."
+    )
 
 
 if __name__ == "__main__":

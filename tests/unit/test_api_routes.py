@@ -18,6 +18,11 @@ def client():
     test_app.include_router(query.router, prefix="/api/v1")
     test_app.include_router(ingest.router, prefix="/api/v1")
 
+    # Initialize app.state to simulate healthy state
+    from unittest.mock import MagicMock
+    test_app.state.rag_pipeline = MagicMock()
+    test_app.state.initialization_error = None
+
     return TestClient(test_app)
 
 

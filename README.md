@@ -782,6 +782,108 @@ curl -O http://localhost:8000/api/v1/documents/export/my_document.pdf
 
 **Note**: The export feature gracefully handles missing optional libraries. If reportlab or python-docx are not installed, PDF and DOCX export will be disabled with clear error messages. TXT export is always available.
 
+#### Document Chunking Strategies
+
+The Enterprise RAG System provides multiple document chunking strategies optimized for different use cases. Proper chunking is critical for RAG performance as it affects retrieval accuracy and context preservation.
+
+**Available Chunking Strategies:**
+
+1. **Fixed-Size Chunking** (`ChunkingStrategy.FIXED`)
+   - Simple, predictable character-based chunking
+   - Splits text into fixed-size chunks with overlap
+   - Best for: Uniform documents, predictable processing
+   - Use case: Log files, CSV data, structured text
+
+2. **Recursive Character Chunking** (`ChunkingStrategy.RECURSIVE`) - **Default**
+   - Smart splitting at natural boundaries (paragraphs → sentences → words)
+   - Preserves context better than fixed-size
+   - Best for: General documents, mixed content
+   - Use case: Articles, reports, documentation
+
+3. **Semantic Chunking** (`ChunkingStrategy.SEMANTIC`)
+   - Content-aware chunking based on semantic similarity
+   - Identifies natural topic boundaries
+   - Best for: Complex documents with distinct topics
+   - Use case: Research papers, technical docs, books
+
+**Usage Example:**
+
+```python
+from app.services.chunking import (
+    DocumentChunker,
+    ChunkingConfig,
+    ChunkingStrategy
+)
+from app.services.document_loader import DocumentLoader
+
+# Load documents
+documents = DocumentLoader.load_directory("./docs", file_extensions=['.pdf', '.md'])
+
+# Configure chunking
+config = ChunkingConfig(
+    strategy=ChunkingStrategy.RECURSIVE,  # or .FIXED, .SEMANTIC
+    chunk_size=1000,                      # max characters per chunk
+    chunk_overlap=200                     # overlap between chunks
+)
+
+# Create chunker and process documents
+chunker = DocumentChunker(config)
+results = chunker.chunk_documents(documents)
+
+# Access chunks
+for result in results:
+    print(f"Document {result.doc_id} split into {result.total_chunks} chunks")
+    for chunk in result.chunks:
+        print(f"  Chunk {chunk.metadata['chunk_index']}: {len(chunk.content)} chars")
+```
+
+**Chunking Configuration:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `strategy` | `ChunkingStrategy` | `RECURSIVE` | Chunking algorithm to use |
+| `chunk_size` | `int` | `1000` | Maximum characters per chunk (min: 100) |
+| `chunk_overlap` | `int` | `200` | Overlap between consecutive chunks |
+
+**Choosing the Right Strategy:**
+
+- **Fixed-Size**: Use when processing speed is critical and documents are uniform
+- **Recursive**: Use for general-purpose RAG with mixed document types (recommended)
+- **Semantic**: Use for complex documents where topic shifts are important
+
+**Best Practices:**
+
+1. **Chunk Size**: Start with 1000-1500 characters for most RAG applications
+2. **Overlap**: Use 10-20% overlap to maintain context between chunks
+3. **Testing**: Evaluate different strategies with your specific documents
+4. **Metadata**: All chunks preserve original document metadata for traceability
+
+**Advanced Customization:**
+
+```python
+# Custom separators for recursive chunking
+from app.services.chunking import RecursiveCharacterChunkingStrategy
+
+strategy = RecursiveCharacterChunkingStrategy(
+    chunk_size=1500,
+    chunk_overlap=300,
+    separators=["\n\n", "\n", "##", ". ", " ", ""]
+)
+
+# Use with DocumentChunker
+config = ChunkingConfig(strategy=ChunkingStrategy.RECURSIVE)
+chunker = DocumentChunker(config)
+chunker.strategy = strategy  # Override default strategy
+```
+
+**Performance Considerations:**
+
+- Fixed-size: Fastest, lowest memory
+- Recursive: Balanced performance and quality
+- Semantic: Slower due to similarity computation, best quality
+
+For production deployments, benchmark different strategies with your document corpus to optimize for retrieval accuracy and latency.
+
 #### Query Autocorrect API
 
 The Query Autocorrect feature automatically corrects spelling mistakes in user queries before processing, improving search accuracy and user experience.
