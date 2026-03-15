@@ -27,6 +27,7 @@ from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.api.routes.v2 import router as v2_router
+from app.api.analytics import router as analytics_router
 from app.middleware.compression import CompressionMiddleware
 
 
@@ -324,6 +325,9 @@ app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 
 # v2 API routes (enhanced features)
 app.include_router(v2_router)
+
+# Analytics API routes
+app.include_router(analytics_router)
 
 
 @app.get("/", tags=["Health"])

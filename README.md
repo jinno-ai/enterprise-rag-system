@@ -1642,6 +1642,199 @@ For production use, consider:
 
 ---
 
+## 📊 Search Analytics Dashboard
+
+The Enterprise RAG System includes a comprehensive **Search Analytics Dashboard** that provides real-time insights into query performance, user behavior, and system health.
+
+### Features
+
+- **📈 Performance Metrics**
+  - Query latency percentiles (p50, p95, p99)
+  - Success rate tracking
+  - Average tokens used per query
+  - Source retrieval statistics
+  - Confidence score distributions
+
+- **🔍 Query Analytics**
+  - Recent queries with detailed metrics
+  - Top queries by frequency
+  - Time series data for trend analysis
+  - Active query monitoring
+
+- **📉 Visualizations**
+  - Interactive charts with Plotly
+  - Latency trend graphs
+  - Query volume over time
+  - Confidence score histograms
+  - Top query rankings
+
+### API Endpoints
+
+The analytics module provides the following REST API endpoints:
+
+#### Get Statistics
+```bash
+curl http://localhost:8000/api/v1/analytics/statistics
+```
+
+**Response:**
+```json
+{
+  "total_queries": 1523,
+  "avg_latency_ms": 1850.5,
+  "p50_latency_ms": 1650.0,
+  "p95_latency_ms": 2800.0,
+  "p99_latency_ms": 3500.0,
+  "success_rate": 0.94,
+  "avg_tokens_used": 750.0,
+  "avg_sources_count": 5.2,
+  "avg_confidence": 0.87
+}
+```
+
+#### Get Recent Queries
+```bash
+curl "http://localhost:8000/api/v1/analytics/queries/recent?limit=10"
+```
+
+#### Get Time Series Data
+```bash
+curl "http://localhost:8000/api/v1/analytics/queries/time-series?hours=24&interval_minutes=60"
+```
+
+**Response:**
+```json
+[
+  {
+    "timestamp": "2026-03-15T10:00:00+00:00",
+    "count": 45,
+    "avg_latency_ms": 1750.5
+  },
+  {
+    "timestamp": "2026-03-15T11:00:00+00:00",
+    "count": 52,
+    "avg_latency_ms": 1820.3
+  }
+]
+```
+
+#### Get Top Queries
+```bash
+curl "http://localhost:8000/api/v1/analytics/queries/top?limit=10"
+```
+
+#### Health Check
+```bash
+curl http://localhost:8000/api/v1/analytics/health
+```
+
+### Dashboard UI
+
+Launch the interactive dashboard using Streamlit:
+
+```bash
+streamlit run app/dashboard.py
+```
+
+The dashboard provides:
+- Real-time metrics display
+- Interactive charts and graphs
+- Query history exploration
+- Performance trend analysis
+- Auto-refresh capability
+
+**Dashboard Features:**
+
+1. **Query Statistics**
+   - Total queries, success rate, average latency
+   - Token usage and source retrieval metrics
+   - Real-time performance indicators
+
+2. **Latency Analysis**
+   - Percentile breakdown (p50, p95, p99)
+   - Time-based trend visualization
+   - Performance threshold monitoring
+
+3. **Query Insights**
+   - Most frequent queries
+   - Average performance per query
+   - Query categorization
+
+4. **Recent Activity**
+   - Latest queries with full details
+   - Status indicators (success/error)
+   - Drill-down capability
+
+### Configuration
+
+The analytics system uses the existing performance monitoring infrastructure. To enable:
+
+1. **Enable Performance Monitoring Middleware** (if not already enabled):
+
+```python
+# In app/main.py
+from app.middleware.monitoring import PerformanceMonitoringMiddleware
+
+app.add_middleware(
+    PerformanceMonitoringMiddleware,
+    enable_query_tracking=True,
+    track_all_requests=True,
+    query_path_prefix="/api/v1/query"
+)
+```
+
+2. **Customize Dashboard Settings**:
+
+```python
+# In app/dashboard.py
+API_BASE_URL = "http://localhost:8000"  # Adjust to your API endpoint
+```
+
+3. **Adjust History Retention**:
+
+```python
+# In app/core/performance.py
+monitor = PerformanceMonitor(max_history=1000)  # Increase for longer retention
+```
+
+### Use Cases
+
+- **Performance Monitoring**: Track query latency and identify bottlenecks
+- **Capacity Planning**: Analyze query patterns to scale resources
+- **User Behavior Analysis**: Understand what users are searching for
+- **Troubleshooting**: Investigate failed queries and errors
+- **Optimization**: Identify opportunities to improve relevance and speed
+
+### Data Retention
+
+- **In-Memory Storage**: Query metrics are stored in memory by default
+- **Max History**: 1000 queries (configurable)
+- **Persistence**: Add Redis/database integration for long-term storage
+
+### Production Deployment
+
+For production use:
+
+1. **Enable Persistence**:
+   ```python
+   # Use Redis for persistent metrics storage
+   import redis
+   redis_client = redis.Redis(host='localhost', port=6379, db=0)
+   ```
+
+2. **Set Up Alerts**:
+   - Monitor p95 latency thresholds
+   - Alert on success rate drops
+   - Track error rate increases
+
+3. **Dashboard Authentication**:
+   ```python
+   # Add authentication to dashboard
+   import streamlit.auth
+   ```
+
+---
+
 ## 🏗️ Architecture
 
 ### System Overview
