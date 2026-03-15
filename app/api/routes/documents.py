@@ -12,14 +12,9 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import tempfile
 import os
-import uuid
 import asyncio
 import logging
 
-from app.core.logging_config import get_logger
-
-
-logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
 
@@ -47,6 +42,8 @@ class DocumentIngestRequest(BaseModel):
     collection: Optional[str] = Field(None, description="Collection name")
     chunk_size: int = Field(1000, description="Chunk size for splitting")
     chunk_overlap: int = Field(200, description="Chunk overlap")
+    enable_deduplication: bool = Field(False, description="Enable document deduplication")
+    deduplication_strategy: str = Field("exact", description="Deduplication strategy: exact or similarity")
 
 
 class DocumentIngestResponse(BaseModel):
@@ -65,100 +62,20 @@ class DocumentStats(BaseModel):
     collections: List[str]
 
 
-# Batch processing models
-class DocumentCreateRequest(BaseModel):
-    """Request model for single document creation in batch"""
-    id: str = Field(..., description="Unique document identifier")
-    content: str = Field(..., description="Document text content")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata")
-
-
-class BatchIngestRequest(BaseModel):
-    """Request model for batch document ingestion"""
-    documents: List[DocumentCreateRequest] = Field(
-        ...,
-        description="List of documents to process (max 1000)",
-        max_length=1000
-    )
-    collection: str = Field("default", description="Collection name")
-    chunk_size: int = Field(1000, description="Chunk size for splitting", ge=100, le=4000)
-    chunk_overlap: int = Field(200, description="Chunk overlap", ge=0, le=500)
-
-
-class BatchIngestResponse(BaseModel):
-    """Response model for batch ingestion initiation"""
-    task_id: str = Field(..., description="Celery task ID for tracking")
-    status: str = Field(..., description="Task status")
-    total_documents: int = Field(..., description="Number of documents submitted")
-    collection: str = Field(..., description="Collection name")
-
-
-class BatchStatusResponse(BaseModel):
-    """Response model for batch processing status"""
-    task_id: str
-    status: str = Field(..., description="Task state (PENDING/PROGRESS/SUCCESS/FAILURE)")
-    result: Optional[Dict[str, Any]] = Field(None, description="Processing results if complete")
-    error: Optional[str] = Field(None, description="Error message if failed")
-
-
-@router.post(
-    "/ingest",
-    response_model=DocumentIngestResponse,
-    summary="Ingest Documents from Directory / ディレクトリからドキュメントをインジェスト",
-    description="Load, process, and store documents from a directory into the vector database / ディレクトリからドキュメントを読み込み、処理してベクトルデータベースに保存します",
-    response_description="Document ingestion statistics and status / ドキュメントインジェストの統計とステータス",
-    responses={
-        200: {"description": "Documents ingested successfully / ドキュメントインジェスト成功"},
-        400: {"description": "No documents found or invalid parameters / ドキュメントが見つからないか不正なパラメータ"},
-        404: {"description": "Directory not found / ディレクトリが見つからない"},
-        500: {"description": "Ingestion failed / インジェスト失敗"}
-    },
-    tags=["Documents"]
-)
+@router.post("/ingest", response_model=DocumentIngestResponse)
 async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResponse:
     """
-    Ingest documents from a directory / ディレクトリからドキュメントをインジェストします
-
-    ## Supported Formats / 対応フォーマット
-
-    - **PDF**: `.pdf` files using PyPDF2 / PyPDF2を使用したPDFファイル
-    - **Markdown**: `.md` files / Markdownファイル
-    - **Text**: `.txt` files / テキストファイル
-    - **HTML**: `.html` files (with html2text) / HTMLファイル（html2text使用）
-
-    ## Process / 処理フロー
-
-    1. **Load**: Read documents from source path / ソースパスからドキュメントを読み込み
-    2. **Split**: Chunk documents with overlap / ドキュメントをオーバーラップ付きでチャンク分割
-    3. **Embed**: Generate vector embeddings / ベクトル埋め込みを生成
-    4. **Store**: Save to vector database / ベクトルデータベースに保存
-
-    ## Parameters / パラメータ
-
-    - **source_path**: Path to directory containing documents / ドキュメントを含むディレクトリへのパス
-    - **collection**: Collection name for organization / 整理用のコレクション名
-    - **chunk_size**: Size of text chunks (100-4000) / テキストチャンクのサイズ (100-4000)
-    - **chunk_overlap**: Overlap between chunks (0-500) / チャンク間のオーバーラップ (0-500)
-
-    ## Example / 例
-
-    ```json
-    {
-      "source_path": "./data/hr-policies",
-      "collection": "hr-policies",
-      "chunk_size": 1000,
-      "chunk_overlap": 200
-    }
-    ```
-
+    Ingest documents from a directory
+    
     Args:
         request: Ingestion request with source path and parameters
-
+    
     Returns:
         DocumentIngestResponse with ingestion statistics
     """
     try:
         from app.services.document_loader import DocumentLoader, TextSplitter
+        from app.services.preview import PreviewGenerator, get_preview_cache
         from app.core.embeddings import get_embedding_model
         from app.core.vectordb import get_vector_db
         from app.core.config import get_settings
@@ -171,20 +88,49 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         # Load documents
         logger.info(f"Loading documents from: {request.source_path}")
         documents = DocumentLoader.load_directory(request.source_path)
-        
+
         if not documents:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No documents found in the specified path"
             )
-        
+
+        # Apply deduplication if enabled
+        if request.enable_deduplication:
+            logger.info(f"Deduplication enabled with strategy: {request.deduplication_strategy}")
+            from app.services.deduplication import get_deduplicator
+
+            deduplicator = get_deduplicator(strategy=request.deduplication_strategy)
+            documents, dedup_result = deduplicator.deduplicate(documents)
+
+            logger.info(
+                f"Deduplication complete: {dedup_result.unique_documents}/{dedup_result.total_documents} "
+                f"unique documents ({dedup_result.duplicates_removed} duplicates removed)"
+            )
+
+        # Generate previews for all documents
+        logger.info(f"Generating previews for {len(documents)} documents")
+        preview_generator = PreviewGenerator(max_preview_length=300)
+        preview_cache = get_preview_cache()
+
+        preview_count = 0
+        for doc in documents:
+            try:
+                preview = preview_generator.generate_preview(doc)
+                preview_cache.set(preview)
+                preview_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to generate preview for {doc.doc_id}: {e}")
+
+        logger.info(f"Successfully generated {preview_count}/{len(documents)} previews")
+
         # Split documents into chunks
         splitter = TextSplitter(
             chunk_size=request.chunk_size,
             chunk_overlap=request.chunk_overlap
         )
         chunks = splitter.split_documents(documents)
-
+        
         # Generate embeddings
         logger.info(f"Generating embeddings for {len(chunks)} chunks")
         embedding_model = get_embedding_model()
@@ -192,28 +138,32 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         embeddings = embedding_model.embed_texts(texts)
         
         # Store in vector database
-        vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
-
+        vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
+        
         if vector_db.index is None:
             vector_db.create_index(dimension=embedding_model.dimension)
-
+        
         ids = [chunk.doc_id for chunk in chunks]
         metadata = [chunk.metadata for chunk in chunks]
-
-        # Use collection from request
-        collection = request.collection or "default"
-        vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata, collection=collection)
-
+        
+        vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
+        
         # Save index
         if hasattr(vector_db, 'save'):
-            vector_db.save(settings.faiss_index_path)
+            vector_db.save("./data/faiss_index.bin")
         
+        # Build message with deduplication info if applicable
+        base_msg = f"Successfully ingested {len(documents)} documents"
+        if request.enable_deduplication:
+            base_msg += f" ({dedup_result.duplicates_removed} duplicates removed)"
+        base_msg += f" with {preview_count} previews"
+
         return DocumentIngestResponse(
             success=True,
             documents_processed=len(documents),
             chunks_created=len(chunks),
             collection=request.collection or "default",
-            message=f"Successfully ingested {len(documents)} documents"
+            message=base_msg
         )
     
     except FileNotFoundError as e:
@@ -228,56 +178,25 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         )
 
 
-@router.post(
-    "/upload",
-    response_model=DocumentIngestResponse,
-    summary="Upload Single Document / 単一ドキュメントアップロード",
-    description="Upload and ingest a single document file into the vector database / 単一のドキュメントファイルをアップロードしてベクトルデータベースにインジェストします",
-    response_description="Document ingestion statistics and status / ドキュメントインジェストの統計とステータス",
-    responses={
-        200: {"description": "Document uploaded and ingested successfully / ドキュメントアップロードとインジェスト成功"},
-        400: {"description": "Unsupported file type or invalid parameters / サポートされていないファイルタイプか不正なパラメータ"},
-        500: {"description": "Upload failed / アップロード失敗"}
-    },
-    tags=["Documents"]
-)
+@router.post("/upload", response_model=DocumentIngestResponse)
 async def upload_document(
     file: UploadFile = File(...),
     collection: Optional[str] = Form(None),
     chunk_size: int = Form(1000),
-    chunk_overlap: int = Form(200)
+    chunk_overlap: int = Form(200),
+    enable_deduplication: bool = Form(False),
+    deduplication_strategy: str = Form("exact")
 ) -> DocumentIngestResponse:
     """
-    Upload and ingest a single document / 単一のドキュメントをアップロードしてインジェストします
-
-    ## Supported File Types / 対応ファイルタイプ
-
-    - **PDF**: `.pdf` - PDF documents / PDFドキュメント
-    - **Markdown**: `.md` - Markdown files / Markdownファイル
-    - **Text**: `.txt` - Plain text files / テキストファイル
-
-    ## Form Data / フォームデータ
-
-    - **file**: The document file to upload (required) / アップロードするドキュメントファイル（必須）
-    - **collection**: Collection name (optional, default: "default") / コレクション名（オプション、デフォルト: "default"）
-    - **chunk_size**: Size of text chunks (optional, default: 1000) / テキストチャンクのサイズ（オプション、デフォルト: 1000）
-    - **chunk_overlap**: Overlap between chunks (optional, default: 200) / チャンク間のオーバーラップ（オプション、デフォルト: 200）
-
-    ## Example with curl / curl使用例
-
-    ```bash
-    curl -X POST "http://localhost:8000/api/v1/documents/upload" \
-      -F "file=@document.pdf" \
-      -F "collection=hr-policies" \
-      -F "chunk_size=1000" \
-      -F "chunk_overlap=200"
-    ```
+    Upload and ingest a single document
 
     Args:
         file: Uploaded file
         collection: Collection name
         chunk_size: Chunk size for splitting
         chunk_overlap: Chunk overlap
+        enable_deduplication: Enable document deduplication against existing docs
+        deduplication_strategy: Deduplication strategy (exact or similarity)
 
     Returns:
         DocumentIngestResponse with ingestion statistics
@@ -286,10 +205,7 @@ async def upload_document(
         from app.services.document_loader import DocumentLoader, TextSplitter
         from app.core.embeddings import get_embedding_model
         from app.core.vectordb import get_vector_db
-        from app.core.config import get_settings
-
-        settings = get_settings()
-
+        
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
             content = await file.read()
@@ -321,20 +237,18 @@ async def upload_document(
             embeddings = embedding_model.embed_texts(texts)
             
             # Store in vector database
-            vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
-
+            vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
+            
             if vector_db.index is None:
                 vector_db.create_index(dimension=embedding_model.dimension)
-
+            
             ids = [chunk.doc_id for chunk in chunks]
             metadata = [chunk.metadata for chunk in chunks]
-
-            # Use collection from request
-            collection_name = collection or "default"
-            vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata, collection=collection_name)
-
+            
+            vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
+            
             if hasattr(vector_db, 'save'):
-                vector_db.save(settings.faiss_index_path)
+                vector_db.save("./data/faiss_index.bin")
             
             return DocumentIngestResponse(
                 success=True,
@@ -356,55 +270,21 @@ async def upload_document(
         )
 
 
-@router.get(
-    "/stats",
-    response_model=DocumentStats,
-    summary="Get Document Statistics / ドキュメント統計取得",
-    description="Retrieve statistics about ingested documents and collections / インジェストされたドキュメントとコレクションに関する統計を取得します",
-    response_description="Document statistics including counts and collections / ドキュメント数とコレクションを含む統計",
-    responses={
-        200: {"description": "Statistics retrieved successfully / 統計取得成功"},
-        500: {"description": "Failed to retrieve statistics / 統計取得失敗"}
-    },
-    tags=["Documents"]
-)
+@router.get("/stats", response_model=DocumentStats)
 async def get_stats() -> DocumentStats:
-    """Get statistics about ingested documents / インジェストされたドキュメントに関する統計を取得します
-
-    ## Returns / 戻り値
-
-    - **total_documents**: Total number of documents across all collections / すべてのコレクションのドキュメント総数
-    - **total_chunks**: Total number of chunks across all collections / すべてのコレクションのチャンク総数
-    - **collections**: List of collection names / コレクション名のリスト
-
-    ## Example Response / レスポンス例
-
-    ```json
-    {
-      "total_documents": 150,
-      "total_chunks": 2250,
-      "collections": ["default", "hr-policies", "tech-docs"]
-    }
-    ```
-    """
+    """Get statistics about ingested documents"""
     try:
         from app.core.vectordb import get_vector_db
-        from app.core.config import get_settings
 
-        settings = get_settings()
-
-        vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
+        vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
         vector_db.connect()
 
         stats = vector_db.get_stats()
 
-        # Extract collection names from stats
-        collection_names = list(stats.get('collections', {}).keys())
-
         return DocumentStats(
             total_documents=stats.get('total_vectors', 0),
             total_chunks=stats.get('total_vectors', 0),
-            collections=collection_names if collection_names else ["default"]
+            collections=["default"]  # TODO: Implement multi-collection support
         )
 
     except Exception as e:
@@ -727,9 +607,6 @@ async def invalidate_document_preview(doc_id: str) -> Dict[str, Any]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to invalidate preview: {str(e)}"
         )
-
-
-# Async processing endpoints
 
 
 # Async processing endpoints
@@ -1174,4 +1051,69 @@ async def get_supported_formats() -> SupportedFormatsResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get supported formats: {str(e)}"
+        )
+
+
+# Deduplication endpoints
+
+class DeduplicationStatsResponse(BaseModel):
+    """Response model for deduplication statistics"""
+    total_runs: int
+    total_documents_processed: int
+    total_duplicates_removed: int
+    average_processing_time_ms: float
+    last_run: Optional[Dict[str, Any]] = None
+
+
+@router.get("/deduplication/stats", response_model=DeduplicationStatsResponse)
+async def get_deduplication_stats() -> DeduplicationStatsResponse:
+    """
+    Get deduplication statistics from the current session.
+
+    Returns statistics about documents processed and duplicates removed.
+
+    Returns:
+        DeduplicationStatsResponse with deduplication statistics
+    """
+    try:
+        from app.services.deduplication import get_deduplicator
+
+        # Get a deduplicator instance to retrieve stats
+        deduplicator = get_deduplicator()
+        stats = deduplicator.get_statistics()
+
+        return DeduplicationStatsResponse(**stats)
+
+    except Exception as e:
+        logger.error(f"Failed to get deduplication stats: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get deduplication stats: {str(e)}"
+        )
+
+
+@router.post("/deduplication/clear-history")
+async def clear_deduplication_history() -> Dict[str, Any]:
+    """
+    Clear deduplication history.
+
+    Returns:
+        Status of history clearing
+    """
+    try:
+        from app.services.deduplication import get_deduplicator
+
+        deduplicator = get_deduplicator()
+        deduplicator.clear_history()
+
+        return {
+            "success": True,
+            "message": "Deduplication history cleared successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to clear deduplication history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear deduplication history: {str(e)}"
         )

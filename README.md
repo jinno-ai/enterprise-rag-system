@@ -50,6 +50,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **Query Autocorrect** - Automatic spelling correction and query suggestion
   - Fuzzy matching for typo detection
   - Domain-specific term preservation
+  - **Document Deduplication** - Automatic detection and removal of duplicate documents using content hashing or similarity matching
 
 - **⚡ Performance Optimized**
   - Vector database caching and indexing
@@ -843,6 +844,76 @@ for result in results:
 |-----------|------|---------|-------------|
 | `strategy` | `ChunkingStrategy` | `RECURSIVE` | Chunking algorithm to use |
 | `chunk_size` | `int` | `1000` | Maximum characters per chunk (min: 100) |
+
+#### Document Deduplication
+
+The Enterprise RAG System provides automatic document deduplication to prevent storing duplicate content, which improves storage efficiency and retrieval accuracy.
+
+**Deduplication Strategies:**
+
+1. **Exact Hash Deduplication** (Default)
+   - Uses SHA256 content hashing to detect exact duplicates
+   - Fast and efficient for large document sets
+   - Detects 100% identical content regardless of metadata
+   - Best for: Removing exact file duplicates
+
+2. **Similarity-Based Deduplication**
+   - Uses Jaccard similarity to detect near-duplicates
+   - Configurable similarity threshold (0.0-1.0)
+   - Can detect documents with minor differences
+   - Best for: Finding similar versions, drafts, or paraphrased content
+
+**API Usage:**
+
+```bash
+# Ingest documents with deduplication enabled
+curl -X POST http://localhost:8000/api/v1/documents/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "./documents",
+    "collection": "knowledge-base",
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "enable_deduplication": true,
+    "deduplication_strategy": "exact"
+  }'
+```
+
+**Python API:**
+
+```python
+from app.services.deduplication import get_deduplicator
+
+# Get deduplicator with exact hash strategy
+deduplicator = get_deduplicator(strategy="exact")
+
+# Or with similarity-based strategy
+deduplicator = get_deduplicator(
+    strategy="similarity",
+    similarity_threshold=0.95
+)
+
+# Deduplicate documents
+unique_docs, result = deduplicator.deduplicate(documents)
+
+print(f"Processed: {result.total_documents} documents")
+print(f"Unique: {result.unique_documents} documents")
+print(f"Duplicates removed: {result.duplicates_removed}")
+print(f"Processing time: {result.processing_time_ms:.2f}ms")
+```
+
+**Deduplication Endpoints:**
+
+- `GET /api/v1/documents/deduplication/stats` - Get deduplication statistics
+- `POST /api/v1/documents/deduplication/clear-history` - Clear deduplication history
+
+**Configuration:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enable_deduplication` | `bool` | `false` | Enable automatic deduplication during ingestion |
+| `deduplication_strategy` | `str` | `"exact"` | Strategy: `"exact"` or `"similarity"` |
+| `similarity_threshold` | `float` | `0.95` | Threshold for similarity matching (0.0-1.0) |
 | `chunk_overlap` | `int` | `200` | Overlap between consecutive chunks |
 
 **Choosing the Right Strategy:**
