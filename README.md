@@ -81,6 +81,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **Request ID tracking** for distributed tracing and debugging
   - **Webhook notifications** for document processing events
   - **Document Export** - Export documents in PDF, DOCX, and TXT formats with metadata preservation
+  - **Multi-Language Support** - Language detection and multilingual query processing for 15+ languages
 
 ---
 
