@@ -367,6 +367,8 @@ def main() -> None:
     # Sidebar configuration
     st.sidebar.header("Configuration")
 
+    global API_BASE_URL
+
     api_url_input = st.sidebar.text_input(
         "API Base URL",
         value=API_BASE_URL,
@@ -374,7 +376,6 @@ def main() -> None:
     )
 
     if api_url_input != API_BASE_URL:
-        global API_BASE_URL
         API_BASE_URL = api_url_input
 
     # Time range selector
