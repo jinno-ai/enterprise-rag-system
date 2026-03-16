@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from dataclasses import dataclass
 import os
+import hashlib
+import json
 
 
 @dataclass
@@ -73,7 +75,6 @@ class VectorDB(ABC):
     ) -> None:
         """Convenience method to add documents (calls upsert)"""
         if ids is None:
-            import hashlib
             ids = [hashlib.md5(doc.encode()).hexdigest() for doc in documents]
 
         self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
@@ -221,6 +222,17 @@ class FAISSVectorDB(VectorDB):
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata
+                metadata_path = self.index_path + ".metadata.json"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        # Convert string keys back to int for idx_to_id
+                        self.idx_to_id = {int(k): v for k, v in data.get('idx_to_id', {}).items()}
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -346,18 +358,20 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
+
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
-        # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        # Save metadata as JSON (more secure and portable than pickle)
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
                 'idx_to_id': self.idx_to_id
-            }, f)
+            }, f, ensure_ascii=False, indent=2)
         
         print(f"✅ Saved FAISS index to: {path}")
 
