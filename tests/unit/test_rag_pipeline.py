@@ -74,7 +74,8 @@ def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_result
     )
 
     # Run query
-    response = pipeline.query("What is the test question?")
+    with patch('time.time', side_effect=[1.0, 1.1]):
+        response = pipeline.query("What is the test question?")
 
     # Assertions
     assert isinstance(response, RAGResponse)

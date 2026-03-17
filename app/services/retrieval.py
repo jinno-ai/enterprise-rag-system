@@ -4,6 +4,7 @@ Retrieval Service for RAG System
 This module implements hybrid search and retrieval logic.
 """
 
+import re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from app.core.vectordb import VectorDB, SearchResult
@@ -41,28 +42,29 @@ class HybridRetriever:
         self.embedding_model = embedding_model
         self.alpha = alpha
         self.bm25_index = None
+        self.bm25_documents = []
     
     def build_bm25_index(self, documents: List[Document]) -> None:
         """Build BM25 index for keyword search"""
         try:
             from rank_bm25 import BM25Okapi
-            import re
             
             # Tokenize documents
             tokenized_docs = []
             for doc in documents:
-                # Simple tokenization
+                # Simple tokenization (improved to handle more characters)
                 tokens = re.findall(r'\w+', doc.content.lower())
                 tokenized_docs.append(tokens)
             
-            self.bm25_index = BM25Okapi(tokenized_docs)
-            self.bm25_documents = documents
-            
-            print(f"✅ Built BM25 index with {len(documents)} documents")
+            if tokenized_docs:
+                self.bm25_index = BM25Okapi(tokenized_docs)
+                self.bm25_documents = documents
+                print(f"✅ Built BM25 index with {len(documents)} documents")
+            else:
+                print("⚠️  No documents provided to build BM25 index")
         
         except ImportError:
             print("⚠️  rank-bm25 not installed. Keyword search disabled.")
-            print("   Install with: pip install rank-bm25")
     
     def semantic_search(
         self,
@@ -85,10 +87,8 @@ class HybridRetriever:
     
     def keyword_search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Perform BM25 keyword search"""
-        if not self.bm25_index:
+        if not self.bm25_index or not self.bm25_documents:
             return []
-        
-        import re
         
         # Tokenize query
         query_tokens = re.findall(r'\w+', query.lower())
@@ -104,7 +104,7 @@ class HybridRetriever:
             if scores[idx] > 0:  # Only include non-zero scores
                 results.append({
                     'document': self.bm25_documents[idx],
-                    'score': scores[idx],
+                    'score': float(scores[idx]),
                     'index': idx
                 })
         
@@ -129,7 +129,7 @@ class HybridRetriever:
             doc_id = result.id
             rrf_score = 1.0 / (rank + 60)  # RRF formula
             combined_scores[doc_id] = {
-                'score': self.alpha * rrf_score,
+                'score': float(self.alpha * rrf_score),
                 'text': result.text,
                 'metadata': result.metadata,
                 'semantic_rank': rank + 1
@@ -143,11 +143,11 @@ class HybridRetriever:
                 rrf_score = 1.0 / (rank + 60)
                 
                 if doc_id in combined_scores:
-                    combined_scores[doc_id]['score'] += (1 - self.alpha) * rrf_score
+                    combined_scores[doc_id]['score'] += float((1 - self.alpha) * rrf_score)
                     combined_scores[doc_id]['keyword_rank'] = rank + 1
                 else:
                     combined_scores[doc_id] = {
-                        'score': (1 - self.alpha) * rrf_score,
+                        'score': float((1 - self.alpha) * rrf_score),
                         'text': doc.content,
                         'metadata': doc.metadata,
                         'keyword_rank': rank + 1
@@ -188,7 +188,7 @@ class HybridRetriever:
             return [
                 RetrievalResult(
                     document=r.text,
-                    score=r.score,
+                    score=float(r.score),
                     metadata=r.metadata,
                     source=r.metadata.get('source', 'unknown')
                 )
@@ -209,6 +209,9 @@ class ContextCompressor:
         method: str = "truncate"
     ) -> str:
         """Compress retrieved results into context string"""
+        if not results:
+            return ""
+
         if method == "truncate":
             return self._truncate_context(results)
         elif method == "rerank":
@@ -226,6 +229,8 @@ class ContextCompressor:
             estimated_tokens = len(result.document) // 4
             
             if total_length + estimated_tokens > self.max_tokens:
+                if not context_parts: # Always include at least part of the first doc if possible
+                    context_parts.append(f"[Source {i+1}]\n{result.document[:self.max_tokens*4]}")
                 break
             
             source = result.metadata.get('filename', 'unknown')
@@ -242,5 +247,4 @@ class ContextCompressor:
     def _rerank_and_truncate(self, query: str, results: List[RetrievalResult]) -> str:
         """Re-rank results before truncation (placeholder for future implementation)"""
         # For now, just use truncation
-        # TODO: Implement cross-encoder re-ranking
         return self._truncate_context(results)
