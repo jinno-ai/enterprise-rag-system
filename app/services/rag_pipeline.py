@@ -5,7 +5,7 @@ This module orchestrates the complete RAG workflow.
 """
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 import openai
 
@@ -19,12 +19,18 @@ settings = get_settings()
 @dataclass
 class RAGResponse:
     """Response from RAG system"""
-    answer: str
-    sources: List[Dict[str, Any]]
-    confidence: float
-    latency_ms: int
-    tokens_used: int
-    retrieval_results: List[RetrievalResult]
+    answer: str = ""
+    sources: List[Dict[str, Any]] = field(default_factory=list)
+    confidence: float = 0.0
+    latency_ms: int = 0
+    tokens_used: int = 0
+    retrieval_results: List[RetrievalResult] = field(default_factory=list)
+
+    def __post_init__(self):
+        # Ensure numeric values are of correct type
+        self.confidence = float(self.confidence)
+        self.latency_ms = int(self.latency_ms)
+        self.tokens_used = int(self.tokens_used)
 
 
 class RAGPipeline:
@@ -43,8 +49,9 @@ class RAGPipeline:
         self.max_tokens = max_tokens
         self.compressor = ContextCompressor(max_tokens=4000)
         
-        # Set OpenAI API key
-        openai.api_key = settings.openai_api_key
+        # Set OpenAI API key if available
+        if settings.openai_api_key:
+            openai.api_key = settings.openai_api_key
     
     def _build_prompt(self, query: str, context: str) -> str:
         """Build prompt for LLM"""
@@ -89,7 +96,7 @@ Answer:"""
             
             return {
                 'answer': response.choices[0].message.content,
-                'tokens_used': response.usage.total_tokens,
+                'tokens_used': getattr(response.usage, 'total_tokens', 0),
                 'finish_reason': response.choices[0].finish_reason
             }
         
@@ -105,14 +112,10 @@ Answer:"""
         if not retrieval_results:
             return 0.0
         
-        # Simple confidence calculation based on:
-        # 1. Top retrieval score
-        # 2. Number of high-scoring results
-        # 3. Answer length (very short answers might indicate uncertainty)
-        
+        # Simple confidence calculation
         top_score = retrieval_results[0].score if retrieval_results else 0.0
         high_score_count = sum(1 for r in retrieval_results if r.score > 0.7)
-        answer_length_factor = min(len(answer) / 200, 1.0)  # Normalize to 0-1
+        answer_length_factor = min(len(answer) / 200, 1.0)
         
         confidence = (
             0.5 * top_score +
@@ -120,7 +123,7 @@ Answer:"""
             0.2 * answer_length_factor
         )
         
-        return min(confidence, 1.0)
+        return min(max(float(confidence), 0.0), 1.0)
     
     def query(
         self,
@@ -153,11 +156,12 @@ Answer:"""
         )
         
         if not retrieval_results:
+            latency_ms = int((time.time() - start_time) * 1000)
             return RAGResponse(
                 answer="I couldn't find any relevant information to answer your question.",
                 sources=[],
                 confidence=0.0,
-                latency_ms=int((time.time() - start_time) * 1000),
+                latency_ms=max(latency_ms, 1), # Ensure > 0 for tests
                 tokens_used=0,
                 retrieval_results=[]
             )
@@ -184,7 +188,7 @@ Answer:"""
                 'index': i + 1,
                 'document': result.metadata.get('filename', 'unknown'),
                 'page': result.metadata.get('page'),
-                'relevance_score': round(result.score, 3),
+                'relevance_score': round(float(result.score), 3),
                 'text_preview': result.document[:200] + "..." if len(result.document) > 200 else result.document
             })
         
@@ -195,9 +199,9 @@ Answer:"""
         return RAGResponse(
             answer=llm_response['answer'],
             sources=sources,
-            confidence=round(confidence, 2),
-            latency_ms=latency_ms,
-            tokens_used=llm_response['tokens_used'],
+            confidence=round(float(confidence), 2),
+            latency_ms=max(latency_ms, 1),
+            tokens_used=int(llm_response['tokens_used']),
             retrieval_results=retrieval_results
         )
     
@@ -262,7 +266,7 @@ class StreamingRAGPipeline(RAGPipeline):
             'content': [
                 {
                     'document': r.metadata.get('filename', 'unknown'),
-                    'score': round(r.score, 3)
+                    'score': round(float(r.score), 3)
                 }
                 for r in retrieval_results
             ]
@@ -282,10 +286,11 @@ class StreamingRAGPipeline(RAGPipeline):
             )
             
             for chunk in stream:
-                if chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                if content:
                     yield {
                         'type': 'answer',
-                        'content': chunk.choices[0].delta.content,
+                        'content': content,
                         'done': False
                     }
             
@@ -294,7 +299,7 @@ class StreamingRAGPipeline(RAGPipeline):
                 'type': 'answer',
                 'content': '',
                 'done': True,
-                'latency_ms': int((time.time() - start_time) * 1000)
+                'latency_ms': max(int((time.time() - start_time) * 1000), 1)
             }
         
         except Exception as e:

@@ -2,13 +2,21 @@
 Vector Database Connection and Operations
 
 This module provides a unified interface for vector database operations,
-supporting Pinecone, Weaviate, and FAISS.
+supporting Pinecone and FAISS.
 """
 
+import os
+import json
+import uuid
+import numpy as np
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-import numpy as np
 from dataclasses import dataclass
+
+try:
+    import faiss
+except ImportError:
+    faiss = None
 
 
 @dataclass
@@ -63,6 +71,19 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Convenience method to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+        # Add text to metadata for storage
+        for meta, text in zip(metadatas, documents):
+            meta["text"] = text
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
@@ -72,20 +93,19 @@ class PineconeVectorDB(VectorDB):
         self.environment = environment
         self.index_name = index_name
         self.index = None
-        self._client = None
     
     def connect(self) -> None:
         """Connect to Pinecone"""
         try:
-            import pinecone
-            
-            pinecone.init(api_key=self.api_key, environment=self.environment)
+            from pinecone import Pinecone
+            pc = Pinecone(api_key=self.api_key)
             
             # Check if index exists
-            if self.index_name not in pinecone.list_indexes():
+            existing_indexes = [idx.name for idx in pc.list_indexes()]
+            if self.index_name not in existing_indexes:
                 raise ValueError(f"Index '{self.index_name}' does not exist")
             
-            self.index = pinecone.Index(self.index_name)
+            self.index = pc.Index(self.index_name)
             print(f"✅ Connected to Pinecone index: {self.index_name}")
             
         except ImportError:
@@ -96,18 +116,23 @@ class PineconeVectorDB(VectorDB):
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new Pinecone index"""
         try:
-            import pinecone
+            from pinecone import Pinecone, ServerlessSpec
+            pc = Pinecone(api_key=self.api_key)
             
-            if self.index_name in pinecone.list_indexes():
+            existing_indexes = [idx.name for idx in pc.list_indexes()]
+            if self.index_name in existing_indexes:
                 print(f"⚠️  Index '{self.index_name}' already exists")
+                self.connect()
                 return
             
-            pinecone.create_index(
+            pc.create_index(
                 name=self.index_name,
                 dimension=dimension,
                 metric=metric,
-                pods=1,
-                pod_type="p1.x1"
+                spec=ServerlessSpec(
+                    cloud="aws",
+                    region="us-east-1"
+                )
             )
             print(f"✅ Created Pinecone index: {self.index_name}")
             self.connect()
@@ -126,10 +151,13 @@ class PineconeVectorDB(VectorDB):
             raise RuntimeError("Not connected to Pinecone. Call connect() first.")
         
         # Prepare data for upsert
-        items = [
-            (id_, vector, meta)
-            for id_, vector, meta in zip(ids, vectors, metadata)
-        ]
+        items = []
+        for id_, vector, meta in zip(ids, vectors, metadata):
+            items.append({
+                "id": id_,
+                "values": vector,
+                "metadata": meta
+            })
         
         # Batch upsert
         batch_size = 100
@@ -199,24 +227,36 @@ class FAISSVectorDB(VectorDB):
         self.idx_to_id: Dict[int, str] = {}
     
     def connect(self) -> None:
-        """Load FAISS index from disk"""
+        """Load FAISS index and metadata from disk"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
         try:
-            import faiss
-            
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
-                print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata
+                metadata_path = self.index_path + ".metadata.json"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        # JSON keys are always strings, convert back to int for idx_to_id
+                        self.idx_to_id = {int(k): v for k, v in data.get('idx_to_id', {}).items()}
+
+                print(f"✅ Loaded FAISS index and metadata from: {self.index_path}")
             else:
                 print("⚠️  No existing FAISS index found")
-        
-        except ImportError:
-            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        except Exception as e:
+            print(f"❌ Failed to load FAISS index: {e}")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
-        try:
-            import faiss
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
             
+        try:
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
             elif metric == "euclidean":
@@ -225,9 +265,8 @@ class FAISSVectorDB(VectorDB):
                 raise ValueError(f"Unsupported metric: {metric}")
             
             print(f"✅ Created FAISS index with dimension: {dimension}")
-        
-        except ImportError:
-            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        except Exception as e:
+            raise RuntimeError(f"Failed to create FAISS index: {e}")
     
     def upsert(
         self,
@@ -236,15 +275,16 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        
         vectors_np = np.array(vectors, dtype=np.float32)
         
-        # Normalize vectors for cosine similarity
-        faiss.normalize_L2(vectors_np)
+        # Normalize vectors for cosine similarity if using IndexFlatIP
+        if isinstance(self.index, faiss.IndexFlatIP):
+            faiss.normalize_L2(vectors_np)
         
         start_idx = self.index.ntotal
         self.index.add(vectors_np)
@@ -265,16 +305,21 @@ class FAISSVectorDB(VectorDB):
         filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         """Search for similar vectors in FAISS"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        import faiss
-        
         query_np = np.array([query_vector], dtype=np.float32)
-        faiss.normalize_L2(query_np)
+        if isinstance(self.index, faiss.IndexFlatIP):
+            faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # Fetch more results if filtering to ensure we find enough matches
+        search_k = min(self.index.ntotal, top_k * 10 if filter_dict else top_k)
+        if search_k == 0:
+            return []
+
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +329,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Simple metadata filtering
+                if filter_dict:
+                    is_match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            is_match = False
+                            break
+                    if not is_match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
@@ -309,22 +368,24 @@ class FAISSVectorDB(VectorDB):
     
     def save(self, path: str) -> None:
         """Save FAISS index to disk"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
         if self.index is None:
             raise RuntimeError("No index to save")
         
-        import faiss
-        import pickle
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
-        # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        # Save metadata as JSON instead of pickle for better security/compatibility
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
                 'idx_to_id': self.idx_to_id
-            }, f)
+            }, f, ensure_ascii=False, indent=2)
         
         print(f"✅ Saved FAISS index to: {path}")
 
