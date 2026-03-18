@@ -220,36 +220,33 @@ class FAISSVectorDB(VectorDB):
         self.id_to_idx: Dict[str, int] = {}
         self.idx_to_id: Dict[int, str] = {}
     
+    def _check_faiss(self) -> None:
+        """Check if faiss is installed"""
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
     def connect(self) -> None:
         """Load FAISS index from disk"""
-        try:
-            pass
-            
-            if self.index_path and os.path.exists(self.index_path):
-                self.index = faiss.read_index(self.index_path)
-                print(f"✅ Loaded FAISS index from: {self.index_path}")
-            else:
-                print("⚠️  No existing FAISS index found")
+        self._check_faiss()
         
-        except ImportError:
-            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        if self.index_path and os.path.exists(self.index_path):
+            self.index = faiss.read_index(self.index_path)
+            print(f"✅ Loaded FAISS index from: {self.index_path}")
+        else:
+            print("⚠️  No existing FAISS index found")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
-        try:
-            pass
-            
-            if metric == "cosine":
-                self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
-            elif metric == "euclidean":
-                self.index = faiss.IndexFlatL2(dimension)
-            else:
-                raise ValueError(f"Unsupported metric: {metric}")
-            
-            print(f"✅ Created FAISS index with dimension: {dimension}")
+        self._check_faiss()
         
-        except ImportError:
-            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        if metric == "cosine":
+            self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
+        elif metric == "euclidean":
+            self.index = faiss.IndexFlatL2(dimension)
+        else:
+            raise ValueError(f"Unsupported metric: {metric}")
+
+        print(f"✅ Created FAISS index with dimension: {dimension}")
     
     def upsert(
         self,
@@ -287,7 +284,7 @@ class FAISSVectorDB(VectorDB):
         """Search for similar vectors in FAISS"""
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
-        pass
+        self._check_faiss()
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -329,8 +326,8 @@ class FAISSVectorDB(VectorDB):
         """Save FAISS index to disk"""
         if self.index is None:
             raise RuntimeError("No index to save")
+        self._check_faiss()
         
-        pass
         import pickle
         
         # Create directory if it doesn't exist
