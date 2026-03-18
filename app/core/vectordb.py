@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
 from dataclasses import dataclass
 
 
@@ -315,6 +316,9 @@ class FAISSVectorDB(VectorDB):
         import faiss
         import pickle
         
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
         faiss.write_index(self.index, path)
         
         # Save metadata
