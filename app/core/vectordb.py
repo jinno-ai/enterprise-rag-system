@@ -11,6 +11,10 @@ import numpy as np
 import os
 import json
 import uuid
+try:
+    import faiss
+except ImportError:
+    faiss = None
 from dataclasses import dataclass
 
 
@@ -219,7 +223,7 @@ class FAISSVectorDB(VectorDB):
     def connect(self) -> None:
         """Load FAISS index from disk"""
         try:
-            import faiss
+            pass
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -233,7 +237,7 @@ class FAISSVectorDB(VectorDB):
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
         try:
-            import faiss
+            pass
             
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
@@ -283,7 +287,7 @@ class FAISSVectorDB(VectorDB):
         """Search for similar vectors in FAISS"""
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
-        import faiss
+        pass
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -326,7 +330,7 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("No index to save")
         
-        import faiss
+        pass
         import pickle
         
         # Create directory if it doesn't exist
