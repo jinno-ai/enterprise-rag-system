@@ -8,6 +8,9 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import uuid
+import os
+import json
 from dataclasses import dataclass
 
 
@@ -62,6 +65,26 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Convenience method to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        # Add text to metadata if not present
+        for i, meta in enumerate(metadatas):
+            if "text" not in meta:
+                meta["text"] = documents[i]
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -240,6 +263,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -274,7 +298,9 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # If filters are present, we might need more initial results
+        search_top_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_top_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -282,14 +308,30 @@ class FAISSVectorDB(VectorDB):
                 continue
             
             id_ = self.idx_to_id.get(idx)
-            if id_:
-                metadata = self.metadata_store.get(id_, {})
-                search_results.append(SearchResult(
-                    id=id_,
-                    score=float(dist),
-                    metadata=metadata,
-                    text=metadata.get("text", "")
-                ))
+            if not id_:
+                continue
+
+            metadata = self.metadata_store.get(id_, {})
+
+            # Apply metadata filters
+            if filter_dict:
+                match = True
+                for key, value in filter_dict.items():
+                    if metadata.get(key) != value:
+                        match = False
+                        break
+                if not match:
+                    continue
+
+            search_results.append(SearchResult(
+                id=id_,
+                score=float(dist),
+                metadata=metadata,
+                text=metadata.get("text", "")
+            ))
+
+            if len(search_results) >= top_k:
+                break
         
         return search_results
     
@@ -313,18 +355,20 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
-        # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        # Save metadata using JSON (more secure than pickle)
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
-                'idx_to_id': self.idx_to_id
-            }, f)
+                'idx_to_id': {str(k): v for k, v in self.idx_to_id.items()}
+            }, f, ensure_ascii=False, indent=2)
         
         print(f"✅ Saved FAISS index to: {path}")
 
