@@ -7,6 +7,7 @@ These tests verify end-to-end functionality of the RAG pipeline.
 import pytest
 import tempfile
 import os
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 
@@ -17,6 +18,26 @@ def temp_vector_db():
         index_path = os.path.join(tmpdir, "test_index.bin")
         yield index_path
 
+
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings for all integration tests"""
+    with patch("app.core.embeddings.openai.embeddings.create") as mock_create:
+        mock_create.return_value.data = [
+            MagicMock(embedding=[0.1] * 1536)
+            for _ in range(100)  # Support large batches
+        ]
+        yield mock_create
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat():
+    """Mock OpenAI chat completions for all integration tests"""
+    with patch("app.services.rag_pipeline.openai.chat.completions.create") as mock_create:
+        mock_create.return_value.choices = [
+            MagicMock(message=MagicMock(content="This is a mocked answer."))
+        ]
+        mock_create.return_value.usage.total_tokens = 123
+        yield mock_create
 
 @pytest.fixture
 def sample_documents():
@@ -224,7 +245,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model

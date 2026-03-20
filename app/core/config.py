@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
     # API Keys
-    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
+    openai_api_key: Optional[str] = Field(None, env="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(None, env="ANTHROPIC_API_KEY")
     cohere_api_key: Optional[str] = Field(None, env="COHERE_API_KEY")
     
