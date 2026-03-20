@@ -37,6 +37,25 @@ def sample_documents():
     ]
 
 
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings globally for integration tests"""
+    from unittest.mock import patch
+    with patch('openai.embeddings.create') as mock_embed:
+        mock_embed.return_value.data = [type('obj', (object,), {'embedding': [0.1] * 1536}) for _ in range(100)]
+        yield mock_embed
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat():
+    """Mock OpenAI chat globally for integration tests"""
+    from unittest.mock import patch, Mock
+    with patch('openai.chat.completions.create') as mock_chat:
+        mock_chat.return_value.choices = [
+            Mock(message=Mock(content="Mocked answer"))
+        ]
+        mock_chat.return_value.usage.total_tokens = 123
+        yield mock_chat
+
 @pytest.mark.integration
 def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     """Test complete RAG pipeline"""
@@ -224,7 +243,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
