@@ -109,7 +109,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
-    from app.services.retrieval import HybridRetriever
+    from app.services.retrieval import HybridRetriever, RetrievalResult
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -167,8 +167,8 @@ def test_context_compression():
 @pytest.mark.integration
 def test_batch_query():
     """Test batch query processing"""
-    from app.services.rag_pipeline import RAGPipeline
-    from app.services.retrieval import HybridRetriever
+    from app.services.rag_pipeline import RAGPipeline, RAGResponse
+    from app.services.retrieval import HybridRetriever, RetrievalResult
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
@@ -224,7 +224,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
