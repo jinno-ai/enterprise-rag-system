@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 「Lost in the Middle」問題を回避するための検索結果の再配置（Re-ordering）の実装
+
+**タイトル:** 【Phase 1.3】「Lost in the Middle」問題を回避するための検索結果の再配置（Re-ordering）の実装
+
+**内容:**
+LLM が長いコンテキストの中央にある情報を無視しやすい「Lost in the Middle」現象を回避するため、検索結果の順序を再配置する機能を実装します。最も関連性の高いドキュメントをコンテキストの最初と最後に配置し、関連性の低いドキュメントを中央に配置することで、生成の精度を向上させます。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` の `ContextCompressor` クラスに `reorder_results` メソッドを追加
+- [ ] 最も関連性の高いものを端（最初と最後）に交互に配置するロジックの実装
+- [ ] `RAGPipeline.query` または `ContextCompressor.compress` 内で再配置オプションを有効化
+- [ ] 再配置による回答精度への影響を確認するための単体テストの追加
