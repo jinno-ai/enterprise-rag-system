@@ -11,6 +11,10 @@ import numpy as np
 import os
 import json
 import uuid
+try:
+    import faiss
+except ImportError:
+    faiss = None
 from dataclasses import dataclass
 
 
@@ -65,6 +69,24 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Ensure 'text' is in metadata
+        final_metadatas = []
+        for i, doc in enumerate(documents):
+            meta = metadatas[i].copy() if metadatas else {}
+            meta["text"] = doc
+            final_metadatas.append(meta)
+
+        self.upsert(embeddings, ids, final_metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -243,6 +265,9 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        global faiss
+        if faiss is None:
+            import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -272,12 +297,17 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
-        import faiss
+        global faiss
+        if faiss is None:
+            import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # FAISS doesn't support metadata filtering natively in IndexFlatIP.
+        # We'll retrieve more and filter locally.
+        search_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -287,12 +317,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Manual filtering
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
