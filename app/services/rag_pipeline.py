@@ -21,10 +21,21 @@ class RAGResponse:
     """Response from RAG system"""
     answer: str
     sources: List[Dict[str, Any]]
-    confidence: float
-    latency_ms: int
-    tokens_used: int
-    retrieval_results: List[RetrievalResult]
+    confidence: float = 0.0
+    latency_ms: int = 0
+    tokens_used: int = 0
+    retrieval_results: List[RetrievalResult] = None
+
+    def __post_init__(self):
+        """Set default values for optional fields"""
+        if self.confidence is None:
+            self.confidence = 0.0
+        if self.latency_ms is None:
+            self.latency_ms = 0
+        if self.tokens_used is None:
+            self.tokens_used = 0
+        if self.retrieval_results is None:
+            self.retrieval_results = []
 
 
 class RAGPipeline:
