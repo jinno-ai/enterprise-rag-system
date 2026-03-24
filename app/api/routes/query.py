@@ -53,9 +53,9 @@ async def query(request: QueryRequest) -> QueryResponse:
     try:
         # Get RAG pipeline instance (should be injected via dependency)
         from app.main import get_rag_pipeline
-        
+
         pipeline = get_rag_pipeline()
-        
+
         # Execute query
         result = pipeline.query(
             question=request.query,
@@ -92,9 +92,9 @@ async def batch_query(request: BatchQueryRequest) -> List[QueryResponse]:
     """
     try:
         from app.main import get_rag_pipeline
-        
+
         pipeline = get_rag_pipeline()
-        
+
         # Execute batch query
         results = pipeline.batch_query(
             questions=request.queries,

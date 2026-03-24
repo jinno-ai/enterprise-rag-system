@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     print("🚀 Starting Enterprise RAG System...")
     
     global _rag_pipeline
-    
+
     try:
         # Initialize components
         print("📊 Initializing vector database...")
