@@ -11,14 +11,7 @@ from pathlib import Path
 import tempfile
 import os
 
-from app.services.document_loader import DocumentLoader, TextSplitter
-from app.core.embeddings import get_embedding_model
-from app.core.vectordb import get_vector_db
-from app.core.config import get_settings
-
 router = APIRouter(prefix="/documents", tags=["documents"])
-
-settings = get_settings()
 
 
 class DocumentIngestRequest(BaseModel):
@@ -57,6 +50,13 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         DocumentIngestResponse with ingestion statistics
     """
     try:
+        from app.services.document_loader import DocumentLoader, TextSplitter
+        from app.core.embeddings import get_embedding_model
+        from app.core.vectordb import get_vector_db
+        from app.core.config import get_settings
+
+        settings = get_settings()
+
         # Load documents
         print(f"📂 Loading documents from: {request.source_path}")
         documents = DocumentLoader.load_directory(request.source_path)
@@ -139,6 +139,10 @@ async def upload_document(
         DocumentIngestResponse with ingestion statistics
     """
     try:
+        from app.services.document_loader import DocumentLoader, TextSplitter
+        from app.core.embeddings import get_embedding_model
+        from app.core.vectordb import get_vector_db
+
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
             content = await file.read()
@@ -211,6 +215,8 @@ async def upload_document(
 async def get_stats() -> DocumentStats:
     """Get statistics about ingested documents"""
     try:
+        from app.core.vectordb import get_vector_db
+
         vector_db = get_vector_db(
             db_type=settings.vector_db_type,
             index_path=settings.faiss_index_path

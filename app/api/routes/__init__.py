@@ -2,6 +2,6 @@
 API Routes Module
 """
 
-from . import query, documents, health
+from app.api.routes import query, documents, health, ingest
 
-__all__ = ['query', 'documents', 'health']
+__all__ = ['query', 'documents', 'health', 'ingest']

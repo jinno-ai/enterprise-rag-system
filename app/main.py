@@ -14,10 +14,14 @@ from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
-from app.api.routes import query, health, documents
+from app.api.routes import query, health, ingest
 
 
 settings = get_settings()
+
+
+# Global instances (initialized at startup)
+_rag_pipeline: RAGPipeline = None
 
 
 @asynccontextmanager
@@ -26,12 +30,14 @@ async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting Enterprise RAG System...")
     
+    global _rag_pipeline
+
     try:
         # Initialize components
         print("📊 Initializing vector database...")
         vector_db = get_vector_db(
-            db_type=settings.vector_db_type,
-            index_path=settings.faiss_index_path
+            db_type="faiss",
+            index_path="./data/faiss_index.bin"
         )
         vector_db.connect()
         
@@ -46,7 +52,7 @@ async def lifespan(app: FastAPI):
         )
         
         print("🤖 Initializing RAG pipeline...")
-        app.state.rag_pipeline = RAGPipeline(
+        _rag_pipeline = RAGPipeline(
             retriever=retriever,
             llm_model=settings.llm_model,
             temperature=settings.llm_temperature,
@@ -87,7 +93,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
-app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
+app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
 
 
 @app.get("/")
@@ -109,6 +115,13 @@ async def health_check():
         "status": "healthy",
         "version": settings.app_version
     }
+
+
+def get_rag_pipeline() -> RAGPipeline:
+    """Get the global RAG pipeline instance"""
+    if _rag_pipeline is None:
+        raise RuntimeError("RAG pipeline not initialized")
+    return _rag_pipeline
 
 
 if __name__ == "__main__":

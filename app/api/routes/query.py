@@ -4,12 +4,11 @@ Query API Routes
 This module defines API endpoints for querying the RAG system.
 """
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
-from app.services.rag_pipeline import RAGResponse, RAGPipeline
-from app.api.deps import get_rag_pipeline
+from app.services.rag_pipeline import RAGResponse
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -41,21 +40,22 @@ class BatchQueryRequest(BaseModel):
 
 
 @router.post("/", response_model=QueryResponse, status_code=status.HTTP_200_OK)
-async def query(
-    request: QueryRequest,
-    pipeline: RAGPipeline = Depends(get_rag_pipeline)
-) -> QueryResponse:
+async def query(request: QueryRequest) -> QueryResponse:
     """
     Query the RAG system with a question
     
     Args:
         request: Query request with question and parameters
-        pipeline: RAG pipeline instance
     
     Returns:
         QueryResponse with answer and sources
     """
     try:
+        # Get RAG pipeline instance (should be injected via dependency)
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
         # Execute query
         result = pipeline.query(
             question=request.query,
@@ -80,21 +80,21 @@ async def query(
 
 
 @router.post("/batch", response_model=List[QueryResponse])
-async def batch_query(
-    request: BatchQueryRequest,
-    pipeline: RAGPipeline = Depends(get_rag_pipeline)
-) -> List[QueryResponse]:
+async def batch_query(request: BatchQueryRequest) -> List[QueryResponse]:
     """
     Query the RAG system with multiple questions
     
     Args:
         request: Batch query request
-        pipeline: RAG pipeline instance
     
     Returns:
         List of QueryResponse objects
     """
     try:
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
         # Execute batch query
         results = pipeline.batch_query(
             questions=request.queries,

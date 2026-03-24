@@ -18,7 +18,7 @@ from app.services.rag_pipeline import RAGPipeline
 from app.services.retrieval import HybridRetriever
 from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
-from app.services.document_loader import DocumentLoader, TextSplitter
+from app.services.document_loader import DocumentLoader
 
 
 def query_command(args):
@@ -88,21 +88,16 @@ def ingest_command(args):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    loader = DocumentLoader(embedding_model=embedding_model)
 
     # Load documents
     source_path = Path(args.source)
     print(f"\n📂 Loading documents from: {source_path}")
 
     if source_path.is_file():
-        ext = source_path.suffix.lower()
-        if ext == '.pdf':
-            documents = DocumentLoader.load_pdf(str(source_path))
-        elif ext == '.md':
-            documents = [DocumentLoader.load_markdown(str(source_path))]
-        else:
-            documents = [DocumentLoader.load_text_file(str(source_path))]
+        documents = loader.load_file(str(source_path))
     elif source_path.is_dir():
-        documents = DocumentLoader.load_directory(str(source_path))
+        documents = loader.load_directory(str(source_path))
     else:
         print(f"❌ Error: Path not found: {source_path}")
         sys.exit(1)
@@ -111,29 +106,23 @@ def ingest_command(args):
 
     # Chunk documents
     print("\n✂️  Chunking documents...")
-    splitter = TextSplitter(
+    chunks = loader.chunk_documents(
+        documents,
         chunk_size=args.chunk_size,
-        chunk_overlap=args.overlap
+        overlap=args.overlap
     )
-    chunks = splitter.split_documents(documents)
     print(f"✅ Created {len(chunks)} chunks")
 
     # Generate embeddings and index
     print("\n🧠 Generating embeddings...")
-    embeddings = embedding_model.embed_texts([chunk.content for chunk in chunks])
-
-    if vector_db.index is None:
-        vector_db.create_index(dimension=embedding_model.dimension)
+    embeddings = embedding_model.embed_texts([chunk.text for chunk in chunks])
 
     print("💾 Indexing in vector database...")
     vector_db.add_documents(
-        documents=[chunk.content for chunk in chunks],
+        documents=[chunk.text for chunk in chunks],
         embeddings=embeddings,
         metadatas=[chunk.metadata for chunk in chunks]
     )
-
-    if args.db_type == 'faiss' and hasattr(vector_db, 'save'):
-        vector_db.save(args.index_path)
 
     print(f"✅ Successfully indexed {len(chunks)} chunks")
 
