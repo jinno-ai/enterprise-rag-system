@@ -5,7 +5,7 @@ This module implements hybrid search and retrieval logic.
 """
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from app.core.vectordb import VectorDB, SearchResult
 from app.core.embeddings import EmbeddingModel
 from app.services.document_loader import Document
@@ -14,10 +14,10 @@ from app.services.document_loader import Document
 @dataclass
 class RetrievalResult:
     """Result from retrieval system"""
-    document: str
-    score: float
-    metadata: Dict[str, Any]
-    source: str
+    document: str = ""
+    score: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    source: str = "unknown"
 
 
 class HybridRetriever:
