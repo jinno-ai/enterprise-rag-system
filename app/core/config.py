@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     cohere_api_key: Optional[str] = Field(None, validation_alias="COHERE_API_KEY")
     
     # Vector Database
+    vector_db_type: str = Field("faiss", validation_alias="VECTOR_DB_TYPE")
+    faiss_index_path: str = Field("./data/faiss_index.bin", validation_alias="FAISS_INDEX_PATH")
     pinecone_api_key: Optional[str] = Field(None, validation_alias="PINECONE_API_KEY")
     pinecone_environment: str = Field("us-west1-gcp", validation_alias="PINECONE_ENVIRONMENT")
     pinecone_index_name: str = Field("enterprise-rag", validation_alias="PINECONE_INDEX_NAME")

@@ -30,8 +30,8 @@ async def lifespan(app: FastAPI):
         # Initialize components
         print("📊 Initializing vector database...")
         vector_db = get_vector_db(
-            db_type="faiss",
-            index_path="./data/faiss_index.bin"
+            db_type=settings.vector_db_type,
+            index_path=settings.faiss_index_path
         )
         vector_db.connect()
         
