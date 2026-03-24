@@ -1,7 +1,7 @@
 # Core Dependencies
 python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic==2.7.1
+pydantic-settings==2.2.1
 
 # LLM & AI Frameworks
 langchain==0.1.20
