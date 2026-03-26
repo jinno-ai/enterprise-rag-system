@@ -8,6 +8,9 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
+from app.services.retrieval import RetrievalResult, HybridRetriever
+from app.services.rag_pipeline import RAGResponse
 
 
 @pytest.fixture
@@ -37,19 +40,56 @@ def sample_documents():
     ]
 
 
+@pytest.fixture
+def mock_openai_embeddings(mocker):
+    """Mock OpenAI embeddings call"""
+    mock = mocker.patch("app.core.embeddings.openai.embeddings.create")
+
+    def side_effect(model, input):
+        data = []
+        for i in range(len(input)):
+            mock_item = MagicMock()
+            mock_item.embedding = [0.1] * 1536
+            data.append(mock_item)
+
+        mock_response = MagicMock()
+        mock_response.data = data
+        return mock_response
+
+    mock.side_effect = side_effect
+    return mock
+
+
+@pytest.fixture
+def mock_openai_chat(mocker):
+    """Mock OpenAI chat completions call"""
+    mock = mocker.patch("app.services.rag_pipeline.openai.chat.completions.create")
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "This is a mock answer."
+
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    mock_response.usage.total_tokens = 50
+
+    mock.return_value = mock_response
+    return mock
+
+
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
+def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents, mock_openai_embeddings, mock_openai_chat):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
-    from app.services.retrieval import HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
 
     # Initialize components
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
+    # Initialize index
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(
         vector_db=vector_db,
@@ -64,17 +104,24 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
         max_tokens=500
     )
 
+    # Index some documents
+    texts = [doc["text"] for doc in sample_documents]
+    embeddings = mock_openai_embeddings(model="text-embedding-ada-002", input=texts).data
+    embeddings_list = [item.embedding for item in embeddings]
+    vector_db.add_documents(texts, embeddings_list, [doc["metadata"] for doc in sample_documents])
+
     # Test query
     question = "What is machine learning?"
 
-    # Note: This will fail if no documents are indexed
-    # In real integration tests, you would first ingest documents
-    assert pipeline is not None
-    assert retriever is not None
+    # Run query
+    response = pipeline.query(question)
+
+    assert isinstance(response, RAGResponse)
+    assert response.answer == "This is a mock answer."
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+def test_vector_db_operations(temp_vector_db, sample_documents, mock_openai_embeddings):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -84,6 +131,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -105,17 +153,17 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+def test_hybrid_retrieval(temp_vector_db, sample_documents, mock_openai_embeddings):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
-    from app.services.retrieval import HybridRetriever
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
@@ -139,7 +187,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
 @pytest.mark.integration
 def test_context_compression():
     """Test context compression for long documents"""
-    from app.services.retrieval import ContextCompressor, RetrievalResult
+    from app.services.retrieval import ContextCompressor
 
     compressor = ContextCompressor(max_tokens=200)
 
@@ -165,10 +213,9 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+def test_batch_query(mock_openai_embeddings, mock_openai_chat):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
-    from app.services.retrieval import HybridRetriever
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
@@ -177,6 +224,7 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -188,7 +236,7 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(mock_openai_embeddings):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -197,6 +245,7 @@ def test_retrieval_with_filters():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -224,7 +273,6 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -232,6 +280,7 @@ def test_confidence_calculation():
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
