@@ -8,33 +8,31 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  OPENAI_API_KEY: 'dummy'
-
 steps:
 - task: UsePythonVersion@0
   inputs:
-    versionSpec: '3.10'
-  displayName: 'Use Python 3.10'
+    versionSpec: '3.11'
+  displayName: 'Use Python 3.11'
 
 - script: |
     python -m pip install --upgrade pip
     pip install -r requirements.txt
-    pip install pytest pytest-azurepipelines pytest-cov
+    pip install pytest pytest-cov
   displayName: 'Install dependencies'
 
 - script: |
-    python -m pytest tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
+    python -m pytest tests/ --junitxml=test-results.xml --cov=app --cov-report=xml
   displayName: 'Run tests'
+  env:
+    OPENAI_API_KEY: 'dummy'
 
 - task: PublishTestResults@2
   condition: succeededOrFailed()
   inputs:
-    testResultsFiles: '**/test-*.xml'
-    testRunTitle: 'Publish test results for Python $(python.version)'
+    testResultsFiles: '**/test-results.xml'
+    testRunTitle: 'Publish test results'
 
 - task: PublishCodeCoverageResults@1
   inputs:
     codeCoverageTool: Cobertura
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-    reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
