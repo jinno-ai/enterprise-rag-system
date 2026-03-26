@@ -64,6 +64,36 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """
+        Convenience method to add documents with their embeddings and metadata
+
+        Args:
+            documents: List of document texts
+            embeddings: List of embedding vectors
+            metadatas: Optional list of metadata dictionaries
+        """
+        import uuid
+
+        if not documents:
+            return
+
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Include text in metadata for search results
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        for i, text in enumerate(documents):
+            metadatas[i]["text"] = text
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
@@ -241,6 +271,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -275,7 +306,9 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # If filtering is needed, we may need to search more then filter
+        search_k = top_k if filter_dict is None else top_k * 10
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -285,6 +318,17 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filters
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
@@ -292,7 +336,7 @@ class FAISSVectorDB(VectorDB):
                     text=metadata.get("text", "")
                 ))
         
-        return search_results
+        return search_results[:top_k]
     
     def delete(self, ids: List[str]) -> None:
         """Delete vectors from FAISS (not directly supported, requires rebuild)"""
