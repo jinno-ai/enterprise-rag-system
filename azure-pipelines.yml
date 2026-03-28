@@ -13,20 +13,22 @@ steps:
 - script: |
     python -m pip install --upgrade pip
     pip install -r requirements.txt
-    pip install pytest pytest-cov pytest-asyncio pytest-mock
   displayName: 'Install dependencies'
 
 - script: |
-    export OPENAI_API_KEY="dummy"
     python -m pytest tests/ -v --cov=app --cov-report=xml --junitxml=test-results.xml
   displayName: 'Run tests with pytest'
+  env:
+    OPENAI_API_KEY: "dummy"
 
 - task: PublishTestResults@2
   condition: succeededOrFailed()
   inputs:
     testResultsFiles: 'test-results.xml'
-    testRunTitle: 'Python $(python.version) Tests'
+    testRunTitle: 'Python 3.10 Tests'
 
-- task: PublishCodeCoverageResults@2
+- task: PublishCodeCoverageResults@1
   inputs:
+    codeCoverageTool: Cobertura
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+    reportDirectory: '$(System.DefaultWorkingDirectory)/htmlcov'

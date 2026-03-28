@@ -9,8 +9,6 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 import os
-import uuid
-import faiss
 from dataclasses import dataclass
 
 
@@ -82,6 +80,7 @@ class VectorDB(ABC):
         if metadatas is not None and len(metadatas) != len(documents):
             raise ValueError("Length of metadatas must match length of documents")
 
+        import uuid
         ids = [str(uuid.uuid4()) for _ in documents]
 
         if metadatas is None:
@@ -273,6 +272,7 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
+        import faiss
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
@@ -300,6 +300,7 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
+        import faiss
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
