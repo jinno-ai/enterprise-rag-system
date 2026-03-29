@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 @pytest.fixture
@@ -37,8 +38,29 @@ def sample_documents():
     ]
 
 
+@pytest.fixture
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings"""
+    with patch('app.core.embeddings.openai.embeddings.create') as mock:
+        mock.return_value.data = [
+            Mock(embedding=[0.1] * 1536) for _ in range(10)
+        ]
+        yield mock
+
+
+@pytest.fixture
+def mock_openai_chat():
+    """Mock OpenAI chat completions"""
+    with patch('app.services.rag_pipeline.openai.chat.completions.create') as mock:
+        mock.return_value.choices = [
+            Mock(message=Mock(content="Test answer"), finish_reason="stop")
+        ]
+        mock.return_value.usage.total_tokens = 50
+        yield mock
+
+
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
+def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents, mock_openai_embeddings, mock_openai_chat):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -74,7 +96,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+def test_vector_db_operations(temp_vector_db, sample_documents, mock_openai_embeddings):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -105,7 +127,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+def test_hybrid_retrieval(temp_vector_db, sample_documents, mock_openai_embeddings):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -165,7 +187,7 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+def test_batch_query(mock_openai_chat):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -188,7 +210,7 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(mock_openai_embeddings):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -224,7 +246,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model

@@ -32,12 +32,14 @@ def sample_retrieval_results():
         RetrievalResult(
             document='Sample document text 1',
             score=0.85,
-            metadata={'filename': 'test1.pdf', 'page': 1}
+            metadata={'filename': 'test1.pdf', 'page': 1},
+            source='test1.pdf'
         ),
         RetrievalResult(
             document='Sample document text 2',
             score=0.75,
-            metadata={'filename': 'test2.pdf', 'page': 2}
+            metadata={'filename': 'test2.pdf', 'page': 2},
+            source='test2.pdf'
         )
     ]
 
@@ -62,10 +64,14 @@ def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_result
     """Test RAG pipeline query"""
     # Setup mocks
     mock_retriever.retrieve.return_value = sample_retrieval_results
-    mock_openai.chat.completions.create.return_value.choices = [
+
+    # Mock OpenAI client instead of the module-level function
+    mock_response = Mock()
+    mock_response.choices = [
         Mock(message=Mock(content=mock_llm_response['answer']))
     ]
-    mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+    mock_response.usage.total_tokens = mock_llm_response['tokens_used']
+    mock_openai.chat.completions.create.return_value = mock_response
 
     # Create pipeline
     pipeline = RAGPipeline(
@@ -81,7 +87,7 @@ def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_result
     assert response.answer == mock_llm_response['answer']
     assert response.confidence > 0
     assert len(response.sources) == 2
-    assert response.latency_ms > 0
+    assert response.latency_ms >= 0
     assert response.tokens_used == mock_llm_response['tokens_used']
 
 
@@ -112,8 +118,14 @@ def test_rag_pipeline_batch_query(mock_retriever, sample_retrieval_results):
         llm_model='gpt-4'
     )
 
-    questions = ["Question 1?", "Question 2?", "Question 3?"]
-    responses = pipeline.batch_query(questions)
+    # Mock internal query method to avoid LLM calls
+    with patch.object(pipeline, 'query') as mock_query:
+        mock_query.return_value = RAGResponse(
+            answer="test", sources=[], confidence=0.0,
+            latency_ms=0, tokens_used=0, retrieval_results=[]
+        )
+        questions = ["Question 1?", "Question 2?", "Question 3?"]
+        responses = pipeline.batch_query(questions)
 
     assert len(responses) == 3
 

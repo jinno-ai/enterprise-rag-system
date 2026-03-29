@@ -5,10 +5,17 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import pickle
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 from dataclasses import dataclass
+
+try:
+    import faiss
+except ImportError:
+    faiss = None
 
 
 @dataclass
@@ -200,35 +207,55 @@ class FAISSVectorDB(VectorDB):
     
     def connect(self) -> None:
         """Load FAISS index from disk"""
-        try:
-            import faiss
-            
-            if self.index_path and os.path.exists(self.index_path):
-                self.index = faiss.read_index(self.index_path)
-                print(f"✅ Loaded FAISS index from: {self.index_path}")
-            else:
-                print("⚠️  No existing FAISS index found")
-        
-        except ImportError:
+        if faiss is None:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
+        if self.index_path and os.path.exists(self.index_path):
+            self.index = faiss.read_index(self.index_path)
+
+            # Load metadata
+            metadata_path = self.index_path + ".metadata.pkl"
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'rb') as f:
+                    data = pickle.load(f)
+                    self.metadata_store = data.get('metadata_store', {})
+                    self.id_to_idx = data.get('id_to_idx', {})
+                    self.idx_to_id = data.get('idx_to_id', {})
+
+            print(f"✅ Loaded FAISS index from: {self.index_path}")
+        else:
+            print("⚠️  No existing FAISS index found")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
-        try:
-            import faiss
-            
-            if metric == "cosine":
-                self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
-            elif metric == "euclidean":
-                self.index = faiss.IndexFlatL2(dimension)
-            else:
-                raise ValueError(f"Unsupported metric: {metric}")
-            
-            print(f"✅ Created FAISS index with dimension: {dimension}")
-        
-        except ImportError:
+        if faiss is None:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
+        if metric == "cosine":
+            self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
+        elif metric == "euclidean":
+            self.index = faiss.IndexFlatL2(dimension)
+        else:
+            raise ValueError(f"Unsupported metric: {metric}")
+
+        print(f"✅ Created FAISS index with dimension: {dimension}")
     
+    def add_documents(self, documents: List[str], embeddings: List[List[float]], metadatas: List[Dict[str, Any]]) -> None:
+        """Add documents and their embeddings to the index"""
+        if len(documents) != len(metadatas):
+             raise ValueError("Number of documents must match number of metadatas")
+
+        if self.index is None:
+             self.create_index(dimension=len(embeddings[0]))
+
+        ids = [str(i) for i in range(len(self.metadata_store), len(self.metadata_store) + len(documents))]
+
+        # Inject text into metadata
+        for meta, text in zip(metadatas, documents):
+            meta["text"] = text
+
+        self.upsert(embeddings, ids, metadatas)
+
     def upsert(
         self,
         vectors: List[List[float]],
@@ -239,12 +266,11 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
-        faiss.normalize_L2(vectors_np)
+        if faiss:
+            faiss.normalize_L2(vectors_np)
         
         start_idx = self.index.ntotal
         self.index.add(vectors_np)
@@ -268,28 +294,42 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        import faiss
-        
         query_np = np.array([query_vector], dtype=np.float32)
-        faiss.normalize_L2(query_np)
+        if faiss:
+            faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # Over-sample to account for filtering
+        search_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
             if idx == -1:  # No result
                 continue
             
-            id_ = self.idx_to_id.get(idx)
+            id_ = self.idx_to_id.get(int(idx))
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filters if provided
+                if filter_dict:
+                    match = True
+                    for k, v in filter_dict.items():
+                        if metadata.get(k) != v:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+            if len(search_results) >= top_k:
+                break
         
         return search_results
     
@@ -312,8 +352,11 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("No index to save")
         
-        import faiss
-        import pickle
+        if faiss is None:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
