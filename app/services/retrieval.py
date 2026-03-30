@@ -4,11 +4,15 @@ Retrieval Service for RAG System
 This module implements hybrid search and retrieval logic.
 """
 
+import re
+import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from app.core.vectordb import VectorDB, SearchResult
 from app.core.embeddings import EmbeddingModel
 from app.services.document_loader import Document
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -46,7 +50,6 @@ class HybridRetriever:
         """Build BM25 index for keyword search"""
         try:
             from rank_bm25 import BM25Okapi
-            import re
             
             # Tokenize documents
             tokenized_docs = []
@@ -58,11 +61,10 @@ class HybridRetriever:
             self.bm25_index = BM25Okapi(tokenized_docs)
             self.bm25_documents = documents
             
-            print(f"✅ Built BM25 index with {len(documents)} documents")
+            logger.info(f"Built BM25 index with {len(documents)} documents")
         
         except ImportError:
-            print("⚠️  rank-bm25 not installed. Keyword search disabled.")
-            print("   Install with: pip install rank-bm25")
+            logger.warning("rank-bm25 not installed. Keyword search disabled.")
     
     def semantic_search(
         self,
@@ -87,8 +89,6 @@ class HybridRetriever:
         """Perform BM25 keyword search"""
         if not self.bm25_index:
             return []
-        
-        import re
         
         # Tokenize query
         query_tokens = re.findall(r'\w+', query.lower())
