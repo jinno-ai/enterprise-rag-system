@@ -18,6 +18,34 @@ def temp_vector_db():
         yield index_path
 
 
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings(mocker):
+    """Mock OpenAI embeddings to avoid API calls"""
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_texts",
+        side_effect=lambda texts: [[0.1] * 1536 for _ in texts]
+    )
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_query",
+        return_value=[0.1] * 1536
+    )
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat(mocker):
+    """Mock OpenAI chat completion to avoid API calls"""
+    mock_response = mocker.Mock()
+    mock_response.choices = [
+        mocker.Mock(message=mocker.Mock(content="Mocked answer"), finish_reason="stop")
+    ]
+    mock_response.usage = mocker.Mock(total_tokens=100)
+
+    mocker.patch(
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mock_response
+    )
+
+
 @pytest.fixture
 def sample_documents():
     """Sample documents for testing"""
@@ -224,7 +252,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
