@@ -26,13 +26,13 @@ steps:
 
 - script: |
     export OPENAI_API_KEY=dummy
-    python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=html
+    python -m pytest tests/ -v --cov=app --cov-report=xml --cov-report=html --junitxml=test-results.xml
   displayName: 'Run tests'
 
 - task: PublishTestResults@2
   condition: succeededOrFailed()
   inputs:
-    testResultsFiles: '**/test-*.xml'
+    testResultsFiles: '**/test-results.xml'
     testRunTitle: 'Python $(python.version) Tests'
 
 - task: PublishCodeCoverageResults@1

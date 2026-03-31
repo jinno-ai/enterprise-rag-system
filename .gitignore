@@ -22,3 +22,9 @@ _bmad/
 # UCG Temp
 .ucg-temp/
 .ucg_hang_detection.json
+
+# Test Results & Coverage
+test-results.xml
+htmlcov/
+coverage.xml
+.pytest_cache/
