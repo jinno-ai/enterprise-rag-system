@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: オブザーバビリティの基盤強化 (Distributed Tracing)
+
+**タイトル:** 【Phase 3.2】OpenTelemetry による分散トレーシングの導入と可観測性の強化
+
+**内容:**
+エンタープライズ環境での運用において、リクエストのライフサイクル全体（FastAPI -> Retrieval -> Vector DB -> LLM）を可視化し、ボトルネックの特定やデバッグを容易にするために、ベンダーに依存しない標準的な分散トレーシング基盤である OpenTelemetry を導入します。
+
+**タスク:**
+- [ ] `opentelemetry-sdk`, `opentelemetry-instrumentation-fastapi` 等の導入
+- [ ] FastAPI, `httpx`, `openai` 等の自動計装 (Instrumentation) 設定
+- [ ] `HybridRetriever` や `RAGPipeline` へのカスタムスパンの追加
+- [ ] OTLP エクスポーターの設定とバックエンド（Arize Phoenix等）への接続検証
