@@ -65,7 +65,23 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 
 ---
 
-## Issue 5: 依存性の注入 (Dependency Injection) の適正化
+## Issue 5: S3/MinIO オブジェクトストレージによるドキュメント永続化層の実装
+
+**タイトル:** 【Phase 2.1】S3/MinIO オブジェクトストレージによるドキュメント永続化層の実装
+
+**内容:**
+エンタープライズ環境でのスケーラビリティと耐障害性を向上させるため、ドキュメントの永続化レイヤーとして S3 や MinIO 等のオブジェクトストレージを統合します。現状、ドキュメントはローカルファイルシステムに依存していますが、本番環境では中央集権的なオブジェクトストアが必要です。
+
+**タスク:**
+- [ ] `app/core/storage.py` (新規) に `DocumentStorage` 抽象ベースクラスを作成する
+- [ ] `boto3` を使用した `S3Storage` クラスを実装する
+- [ ] 開発・テスト用の `LocalStorage` プロバイダーを実装する
+- [ ] ドキュメントアップロード API (`app/api/routes/documents.py`) を修正し、ストレージ層と統合する
+- [ ] `app/core/config.py` に S3 接続用の環境変数を追加する
+
+---
+
+## Issue 6: 依存性の注入 (Dependency Injection) の適正化
 
 **タイトル:** グローバル変数の廃止とDependency Injectionの導入
 
