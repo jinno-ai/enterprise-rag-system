@@ -5,13 +5,37 @@
 
 trigger:
 - main
+- develop
 
-pool: Default
+pool:
+  vmImage: 'ubuntu-latest'
+
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.10'
+  displayName: 'Use Python 3.10'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    pip install pytest pytest-cov pytest-mock
+  displayName: 'Install dependencies'
+
+- script: |
+    pytest tests/ -v --cov=app --cov-report=xml --junitxml=test-results.xml
+  displayName: 'Run tests'
+  env:
+    OPENAI_API_KEY: "dummy"
+
+- task: PublishTestResults@2
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: 'test-results.xml'
+  displayName: 'Publish test results'
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+  displayName: 'Publish code coverage'
