@@ -8,6 +8,36 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings to avoid API calls"""
+    with patch("app.core.embeddings.openai.embeddings.create") as mock_create:
+        def side_effect(model, input):
+            mock_response = MagicMock()
+            # Generate dummy embeddings of correct dimension (1536)
+            mock_response.data = [
+                MagicMock(embedding=[0.1] * 1536) for _ in input
+            ]
+            return mock_response
+
+        mock_create.side_effect = side_effect
+        yield mock_create
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat():
+    """Mock OpenAI chat completions to avoid API calls"""
+    with patch("app.services.rag_pipeline.openai.chat.completions.create") as mock_create:
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(message=MagicMock(content="This is a mocked answer based on [Source 1]."))
+        ]
+        mock_response.usage = MagicMock(total_tokens=100)
+        mock_create.return_value = mock_response
+        yield mock_create
 
 
 @pytest.fixture
@@ -148,12 +178,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -224,7 +256,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -241,7 +273,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
