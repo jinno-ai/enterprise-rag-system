@@ -1,14 +1,12 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
 - main
 - develop
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-22.04'
+
+variables:
+  OPENAI_API_KEY: 'dummy'
 
 steps:
 - task: UsePythonVersion@0
@@ -18,15 +16,13 @@ steps:
 
 - script: |
     python -m pip install --upgrade pip
-    pip install -r requirements.txt
-    pip install pytest pytest-cov pytest-mock
+    python -m pip install -r requirements.txt
+    python -m pip install pytest pytest-cov pytest-mock
   displayName: 'Install dependencies'
 
 - script: |
-    pytest tests/ -v --cov=app --cov-report=xml --junitxml=test-results.xml
+    python -m pytest tests/ -v --cov=app --cov-report=xml --junitxml=test-results.xml
   displayName: 'Run tests'
-  env:
-    OPENAI_API_KEY: "dummy"
 
 - task: PublishTestResults@2
   inputs:
@@ -37,5 +33,5 @@ steps:
 - task: PublishCodeCoverageResults@1
   inputs:
     codeCoverageTool: 'Cobertura'
-    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
   displayName: 'Publish code coverage'
