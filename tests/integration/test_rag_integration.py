@@ -38,12 +38,19 @@ def sample_documents():
 
 
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
+def test_rag_pipeline_end_to_end(mocker, temp_vector_db, sample_documents):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
+
+    # Mock embedding model
+    mock_embedding = [0.1] * 1536
+    mocker.patch(
+        "app.core.embeddings.openai.embeddings.create",
+        return_value=mocker.Mock(data=[mocker.Mock(embedding=mock_embedding)])
+    )
 
     # Initialize components
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -74,10 +81,21 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+def test_vector_db_operations(mocker, temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Mock embedding model to avoid API calls
+    mock_embedding = [0.1] * 1536
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_texts",
+        return_value=[mock_embedding for _ in sample_documents]
+    )
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_query",
+        return_value=mock_embedding
+    )
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -105,11 +123,22 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+def test_hybrid_retrieval(mocker, temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
+
+    # Mock embedding model to avoid API calls
+    mock_embedding = [0.1] * 1536
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_texts",
+        return_value=[mock_embedding for _ in sample_documents]
+    )
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_query",
+        return_value=mock_embedding
+    )
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -188,10 +217,21 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(mocker):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Mock embedding model to avoid API calls
+    mock_embedding = [0.1] * 1536
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_texts",
+        return_value=[mock_embedding for _ in range(3)]
+    )
+    mocker.patch(
+        "app.core.embeddings.OpenAIEmbeddings.embed_query",
+        return_value=mock_embedding
+    )
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
@@ -224,7 +264,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
