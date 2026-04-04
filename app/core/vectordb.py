@@ -5,6 +5,8 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import uuid
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -239,7 +241,7 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -268,13 +270,15 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # If filters are provided, we may need to retrieve more results
+        # and filter them locally since base FAISS doesn't support metadata filtering
+        search_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -282,14 +286,30 @@ class FAISSVectorDB(VectorDB):
                 continue
             
             id_ = self.idx_to_id.get(idx)
-            if id_:
-                metadata = self.metadata_store.get(id_, {})
-                search_results.append(SearchResult(
-                    id=id_,
-                    score=float(dist),
-                    metadata=metadata,
-                    text=metadata.get("text", "")
-                ))
+            if not id_:
+                continue
+
+            metadata = self.metadata_store.get(id_, {})
+
+            # Apply filters locally
+            if filter_dict:
+                match = True
+                for key, value in filter_dict.items():
+                    if metadata.get(key) != value:
+                        match = False
+                        break
+                if not match:
+                    continue
+
+            search_results.append(SearchResult(
+                id=id_,
+                score=float(dist),
+                metadata=metadata,
+                text=metadata.get("text", "")
+            ))
+
+            if len(search_results) >= top_k:
+                break
         
         return search_results
     
@@ -307,6 +327,28 @@ class FAISSVectorDB(VectorDB):
             "dimension": self.index.d
         }
     
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents to FAISS index"""
+        if self.index is None:
+            # Assume dimension from first embedding
+            if embeddings:
+                self.create_index(dimension=len(embeddings[0]))
+            else:
+                raise ValueError("Cannot create index without embeddings")
+
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Add text to metadata
+        for i, doc in enumerate(documents):
+            metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
     def save(self, path: str) -> None:
         """Save FAISS index to disk"""
         if self.index is None:
@@ -315,6 +357,9 @@ class FAISSVectorDB(VectorDB):
         import faiss
         import pickle
         
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
         faiss.write_index(self.index, path)
         
         # Save metadata
