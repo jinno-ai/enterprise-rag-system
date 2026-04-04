@@ -13,8 +13,8 @@ from pathlib import Path
 
 @pytest.fixture
 def mock_openai_embeddings():
-    """Mock OpenAI embeddings to avoid API calls during integration tests"""
-    with patch("openai.embeddings.create") as mock:
+    """Mock OpenAI embeddings to avoid API calls during integration tests (v1.x API)"""
+    with patch("openai.resources.embeddings.Embeddings.create") as mock:
         mock.return_value.data = [
             Mock(embedding=[0.1] * 1536)
             for _ in range(10)
@@ -24,8 +24,8 @@ def mock_openai_embeddings():
 
 @pytest.fixture
 def mock_openai_chat():
-    """Mock OpenAI chat completions to avoid API calls during integration tests"""
-    with patch("openai.chat.completions.create") as mock:
+    """Mock OpenAI chat completions to avoid API calls during integration tests (v1.x API)"""
+    with patch("openai.resources.chat.completions.Completions.create") as mock:
         mock.return_value.choices = [
             Mock(message=Mock(content="Mocked answer for integration test"))
         ]
@@ -247,7 +247,7 @@ def test_retrieval_with_filters(mock_openai_embeddings):
 
 
 @pytest.mark.integration
-def test_confidence_calculation():
+def test_confidence_calculation(mock_openai_embeddings, mock_openai_chat):
     """Test confidence score calculation"""
     from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline

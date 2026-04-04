@@ -241,7 +241,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
@@ -271,7 +270,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
