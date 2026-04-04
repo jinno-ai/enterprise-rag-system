@@ -61,7 +61,7 @@ def sample_documents():
 
 
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
+def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents, mock_openai_embeddings, mock_openai_chat):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -190,7 +190,7 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+def test_batch_query(mock_openai_embeddings, mock_openai_chat):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever

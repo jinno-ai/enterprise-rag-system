@@ -27,7 +27,6 @@ steps:
     export OPENAI_API_KEY=sk-dummy
     pytest tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
   displayName: 'Run unit tests'
-  continueOnError: true
 
 - task: PublishTestResults@2
   condition: succeededOrFailed()
@@ -36,9 +35,7 @@ steps:
     testRunTitle: 'Publish test results for Python $(python.version)'
   displayName: 'Publish test results'
 
-- task: PublishCodeCoverageResults@1
+- task: PublishCodeCoverageResults@2
   inputs:
-    codeCoverageTool: Cobertura
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-    reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
   displayName: 'Publish code coverage'
