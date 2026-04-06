@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -16,6 +17,33 @@ def temp_vector_db():
     with tempfile.TemporaryDirectory() as tmpdir:
         index_path = os.path.join(tmpdir, "test_index.bin")
         yield index_path
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings calls for integration tests"""
+    with patch("openai.resources.embeddings.Embeddings.create") as mock_create:
+        mock_response = MagicMock()
+        # Mock embedding vector of size 1536 (default for ada-002)
+        mock_response.data = [
+            MagicMock(embedding=[0.1] * 1536)
+            for _ in range(10)  # Support up to 10 texts in one call
+        ]
+        mock_create.return_value = mock_response
+        yield mock_create
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat():
+    """Mock OpenAI chat completions for integration tests"""
+    with patch("openai.resources.chat.completions.Completions.create") as mock_create:
+        mock_response = MagicMock()
+        mock_response.choices = [
+            MagicMock(message=MagicMock(content="This is a mocked RAG answer."))
+        ]
+        mock_response.usage = MagicMock(total_tokens=100)
+        mock_create.return_value = mock_response
+        yield mock_create
 
 
 @pytest.fixture
