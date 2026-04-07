@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Unstructured.io 統合による多形式ドキュメント（DOCX, PPTX, XLSX）対応
+
+**タイトル:** 【Phase 1.1】Unstructured.io 統合による多形式ドキュメント（DOCX, PPTX, XLSX）対応
+
+**内容:**
+現在、システムは PDF, TXT, Markdown 形式のみをサポートしています。Unstructured.io を導入することで、DOCX, PPTX, XLSX などの多様なファイル形式をサポートし、エンタープライズ環境での実用性を高めます。
+
+**タスク:**
+- [ ] `unstructured` ライブラリのセットアップと `DocumentLoader` への統合
+- [ ] DOCX, PPTX, XLSX ファイルからのテキスト抽出機能の実装
+- [ ] 必要に応じて OCR (Tesseract) やテーブル抽出機能をオプションとして統合
+- [ ] 新規サポート形式のテスト用ドキュメントの追加と検証
