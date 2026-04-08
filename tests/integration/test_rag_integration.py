@@ -11,19 +11,22 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_openai_embeddings(mocker):
-    """Mock OpenAI embeddings API"""
+    """Mock OpenAI embeddings API at the service level"""
+    # Patch where it's used in app.core.embeddings
     mock_create = mocker.patch("openai.resources.embeddings.Embeddings.create")
 
-    def side_effect(model, input):
+    def side_effect(model, input, **kwargs):
         # Create dummy embeddings of dimension 1536
         if isinstance(input, str):
             input = [input]
 
         embeddings = []
         for _ in input:
-            embeddings.append(MagicMock(embedding=[0.1] * 1536))
+            mock_item = MagicMock()
+            mock_item.embedding = [0.1] * 1536
+            embeddings.append(mock_item)
 
         mock_response = MagicMock()
         mock_response.data = embeddings
@@ -33,16 +36,18 @@ def mock_openai_embeddings(mocker):
     return mock_create
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_openai_chat(mocker):
-    """Mock OpenAI chat completions API"""
+    """Mock OpenAI chat completions API at the service level"""
+    # Patch where it's used in app.services.rag_pipeline
     mock_create = mocker.patch("openai.resources.chat.completions.Completions.create")
 
     mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(message=MagicMock(content="Mocked answer from LLM."), finish_reason="stop")
-    ]
-    mock_response.usage = MagicMock(total_tokens=100)
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Mocked answer from LLM."
+    mock_choice.finish_reason = "stop"
+    mock_response.choices = [mock_choice]
+    mock_response.usage.total_tokens = 100
 
     mock_create.return_value = mock_response
     return mock_create
@@ -76,7 +81,7 @@ def sample_documents():
 
 
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents, mock_openai_embeddings, mock_openai_chat):
+def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -112,7 +117,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents, mock_openai_e
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents, mock_openai_embeddings):
+def test_vector_db_operations(temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -143,7 +148,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents, mock_openai_embe
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents, mock_openai_embeddings):
+def test_hybrid_retrieval(temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -203,7 +208,7 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query(mock_openai_embeddings, mock_openai_chat):
+def test_batch_query():
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -228,7 +233,7 @@ def test_batch_query(mock_openai_embeddings, mock_openai_chat):
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters(mock_openai_embeddings):
+def test_retrieval_with_filters():
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model

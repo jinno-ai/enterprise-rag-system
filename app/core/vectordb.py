@@ -8,7 +8,6 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
-import os
 from dataclasses import dataclass
 
 
@@ -73,10 +72,6 @@ class VectorDB(ABC):
         """Convenience method to add documents with embeddings"""
         if not documents:
             return
-
-        # Ensure index is initialized for FAISS
-        if hasattr(self, "index") and self.index is None and len(embeddings) > 0:
-            self.create_index(dimension=len(embeddings[0]))
 
         import uuid
         ids = [str(uuid.uuid4()) for _ in range(len(documents))]
@@ -229,6 +224,7 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import os
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -263,8 +259,12 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        # Lazy initialization
+        if self.index is None and len(vectors) > 0:
+            self.create_index(dimension=len(vectors[0]))
+
         if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
+            raise RuntimeError("Index not created and could not be initialized.")
         
         import numpy as np
         import faiss
@@ -359,6 +359,10 @@ class FAISSVectorDB(VectorDB):
         
         import faiss
         import pickle
+        import os
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
