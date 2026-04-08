@@ -21,7 +21,6 @@ steps:
 
 - script: |
     export PYTHONPATH=.
-    export OPENAI_API_KEY="sk-dummy"
     python -m pytest tests/unit tests/integration --junitxml=test-results.xml
   displayName: 'Run tests'
   env:
