@@ -8,6 +8,49 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings(mocker):
+    """Mock OpenAI embeddings API at the service level"""
+    # Patch where it's used in app.core.embeddings
+    mock_create = mocker.patch("openai.resources.embeddings.Embeddings.create")
+
+    def side_effect(model, input, **kwargs):
+        # Create dummy embeddings of dimension 1536
+        if isinstance(input, str):
+            input = [input]
+
+        embeddings = []
+        for _ in input:
+            mock_item = MagicMock()
+            mock_item.embedding = [0.1] * 1536
+            embeddings.append(mock_item)
+
+        mock_response = MagicMock()
+        mock_response.data = embeddings
+        return mock_response
+
+    mock_create.side_effect = side_effect
+    return mock_create
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat(mocker):
+    """Mock OpenAI chat completions API at the service level"""
+    # Patch where it's used in app.services.rag_pipeline
+    mock_create = mocker.patch("openai.resources.chat.completions.Completions.create")
+
+    mock_response = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Mocked answer from LLM."
+    mock_choice.finish_reason = "stop"
+    mock_response.choices = [mock_choice]
+    mock_response.usage.total_tokens = 100
+
+    mock_create.return_value = mock_response
+    return mock_create
 
 
 @pytest.fixture
@@ -217,14 +260,21 @@ def test_retrieval_with_filters():
         filter_dict={"category": "tech"}
     )
 
-    # Should only return tech documents
-    assert len(results) <= 2
+    # Debug info for CI
+    print(f"DEBUG: Found {len(results)} filtered results")
+    for r in results:
+        print(f"DEBUG: Result metadata: {r.metadata}")
+
+    # Should only return tech documents (Doc 1 and Doc 3)
+    assert len(results) == 2
+    for r in results:
+        assert r.metadata["category"] == "tech"
 
 
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
