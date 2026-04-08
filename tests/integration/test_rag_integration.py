@@ -224,7 +224,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult, HybridRetriever
+    from app.services.retrieval import RetrievalResult
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -233,6 +233,7 @@ def test_confidence_calculation():
     vector_db.connect()
     embedding_model = get_embedding_model()
 
+    from app.services.retrieval import HybridRetriever
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
