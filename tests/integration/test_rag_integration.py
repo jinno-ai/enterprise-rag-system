@@ -220,8 +220,6 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
-    from app.services.retrieval import HybridRetriever
-    from app.services.rag_pipeline import RAGPipeline
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -262,8 +260,15 @@ def test_retrieval_with_filters():
         filter_dict={"category": "tech"}
     )
 
-    # Should only return tech documents
-    assert len(results) <= 2
+    # Debug info for CI
+    print(f"DEBUG: Found {len(results)} filtered results")
+    for r in results:
+        print(f"DEBUG: Result metadata: {r.metadata}")
+
+    # Should only return tech documents (Doc 1 and Doc 3)
+    assert len(results) == 2
+    for r in results:
+        assert r.metadata["category"] == "tech"
 
 
 @pytest.mark.integration

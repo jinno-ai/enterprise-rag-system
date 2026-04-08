@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import json
+import os
 from dataclasses import dataclass
 
 
@@ -224,16 +226,28 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
-            import os
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
-                print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata if exists
+                metadata_path = self.index_path + ".metadata.json"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        # JSON keys are always strings, convert back to int
+                        self.idx_to_id = {int(k): v for k, v in data.get('idx_to_id', {}).items()}
+
+                print(f"✅ Loaded FAISS index and metadata from: {self.index_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
         except ImportError:
             raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+        except Exception as e:
+            print(f"❌ Error loading FAISS metadata: {e}")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
@@ -305,6 +319,12 @@ class FAISSVectorDB(VectorDB):
         # If filtering is required, we may need to retrieve more results
         # and then filter locally as IndexFlat does not support metadata filters
         search_k = top_k * 10 if filter_dict else top_k
+
+        # Ensure we don't request more than available
+        if self.index.ntotal == 0:
+            return []
+        search_k = min(search_k, self.index.ntotal)
+
         distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
@@ -312,7 +332,8 @@ class FAISSVectorDB(VectorDB):
             if idx == -1:  # No result
                 continue
             
-            id_ = self.idx_to_id.get(idx)
+            # Use int() to ensure lookup works with various numpy integer types
+            id_ = self.idx_to_id.get(int(idx))
             if id_:
                 metadata = self.metadata_store.get(id_, {})
 
@@ -358,24 +379,23 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
-        import os
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         
         faiss.write_index(self.index, path)
         
-        # Save metadata
-        metadata_path = path + ".metadata.pkl"
-        with open(metadata_path, 'wb') as f:
-            pickle.dump({
+        # Save metadata securely using JSON
+        metadata_path = path + ".metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump({
                 'metadata_store': self.metadata_store,
                 'id_to_idx': self.id_to_idx,
-                'idx_to_id': self.idx_to_id
-            }, f)
+                # Convert int keys to string for JSON
+                'idx_to_id': {str(k): v for k, v in self.idx_to_id.items()}
+            }, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ Saved FAISS index to: {path}")
+        print(f"✅ Saved FAISS index and metadata to: {path}")
 
 
 def get_vector_db(db_type: str = "faiss", **kwargs) -> VectorDB:
