@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 import os
+import uuid
 from dataclasses import dataclass
 
 
@@ -68,20 +69,35 @@ class VectorDB(ABC):
         self,
         documents: List[str],
         embeddings: List[List[float]],
-        metadatas: List[Dict[str, Any]]
+        metadatas: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """Convenience method to add documents with embeddings and metadata"""
         if not documents:
             return
 
-        import uuid
+        if len(documents) != len(embeddings):
+            raise ValueError("Number of documents must match number of embeddings")
+
+        # Ensure index exists for FAISS
+        if hasattr(self, 'index') and self.index is None and embeddings:
+            self.create_index(dimension=len(embeddings[0]))
+
         ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Prepare metadata
+        if metadatas is None:
+            processed_metadatas = [{} for _ in documents]
+        else:
+            if len(documents) != len(metadatas):
+                raise ValueError("Number of documents must match number of metadatas")
+            # Create shallow copies to avoid modifying caller's dicts
+            processed_metadatas = [m.copy() for m in metadatas]
 
         # Add text to metadata for retrieval
         for i, doc in enumerate(documents):
-            metadatas[i]["text"] = doc
+            processed_metadatas[i]["text"] = doc
 
-        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        self.upsert(vectors=embeddings, ids=ids, metadata=processed_metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -256,11 +272,13 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        try:
+            import faiss
+        except ImportError:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
-        
-        import numpy as np
-        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -286,11 +304,13 @@ class FAISSVectorDB(VectorDB):
         filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         """Search for similar vectors in FAISS"""
+        try:
+            import faiss
+        except ImportError:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
-        
-        import numpy as np
-        import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -305,6 +325,17 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply local filtering if filter_dict is provided
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
@@ -333,9 +364,16 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("No index to save")
         
-        import faiss
+        try:
+            import faiss
+        except ImportError:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
+
         import pickle
         
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
         faiss.write_index(self.index, path)
         
         # Save metadata
