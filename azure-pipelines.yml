@@ -21,7 +21,6 @@ steps:
   displayName: 'Install dependencies'
 
 - script: |
-    export OPENAI_API_KEY="dummy-key"
     python -m pytest tests/ -v --cov=app --junitxml=test-results.xml
   displayName: 'Run tests'
   env:

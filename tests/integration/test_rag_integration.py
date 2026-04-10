@@ -38,7 +38,7 @@ def sample_documents():
 
 
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
+def test_rag_pipeline_end_to_end(mocker, temp_vector_db, sample_documents):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -50,6 +50,29 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Mock embeddings and LLM
+    import numpy as np
+    mocker.patch(
+        "openai.resources.embeddings.Embeddings.create",
+        return_value=mocker.Mock(
+            data=[mocker.Mock(embedding=np.random.rand(1536).tolist()) for _ in range(4)]
+        ),
+    )
+    mocker.patch(
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mocker.Mock(
+            choices=[
+                mocker.Mock(message=mocker.Mock(content="Test answer"))
+            ],
+            usage=mocker.Mock(total_tokens=10),
+        ),
+    )
+
+    # Index documents first
+    texts = [doc["text"] for doc in sample_documents]
+    embeddings = embedding_model.embed_texts(texts)
+    vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     retriever = HybridRetriever(
         vector_db=vector_db,
@@ -66,11 +89,10 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
     # Test query
     question = "What is machine learning?"
+    response = pipeline.query(question)
 
-    # Note: This will fail if no documents are indexed
-    # In real integration tests, you would first ingest documents
-    assert pipeline is not None
-    assert retriever is not None
+    assert response.answer == "Test answer"
+    assert len(response.sources) > 0
 
 
 @pytest.mark.integration
@@ -192,7 +214,7 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+def test_batch_query(mocker):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -204,6 +226,25 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Mock embeddings and LLM
+    import numpy as np
+    mocker.patch(
+        "openai.resources.embeddings.Embeddings.create",
+        return_value=mocker.Mock(
+            data=[mocker.Mock(embedding=np.random.rand(1536).tolist())]
+        ),
+    )
+    mocker.patch(
+        "openai.resources.chat.completions.Completions.create",
+        return_value=mocker.Mock(
+            choices=[
+                mocker.Mock(message=mocker.Mock(content="Test answer"))
+            ],
+            usage=mocker.Mock(total_tokens=10),
+        ),
+    )
+
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
