@@ -1,17 +1,34 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
 - main
+- develop
 
-pool: Default
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  python.version: '3.10'
+
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '$(python.version)'
+  displayName: 'Use Python $(python.version)'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    pip install pytest pytest-azurepipelines pytest-cov
+  displayName: 'Install dependencies'
+
+- script: |
+    export OPENAI_API_KEY="dummy-key"
+    python -m pytest tests/ --v --cov=app --junitxml=test-results.xml
+  displayName: 'Run tests'
+  env:
+    OPENAI_API_KEY: "dummy-key"
+
+- task: PublishTestResults@2
+  condition: succeededOrFailed()
+  inputs:
+    testResultsFiles: '**/test-results.xml'
+    testRunTitle: 'Python $(python.version) Tests'
