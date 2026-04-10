@@ -22,7 +22,7 @@ steps:
 
 - script: |
     export OPENAI_API_KEY="dummy-key"
-    python -m pytest tests/ --v --cov=app --junitxml=test-results.xml
+    python -m pytest tests/ -v --cov=app --junitxml=test-results.xml
   displayName: 'Run tests'
   env:
     OPENAI_API_KEY: "dummy-key"
