@@ -29,9 +29,7 @@ steps:
     testRunTitle: 'Python 3.10'
   displayName: 'Publish test results'
 
-- task: PublishCodeCoverageResults@1
+- task: PublishCodeCoverageResults@2
   inputs:
-    codeCoverageTool: Cobertura
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-    reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
   displayName: 'Publish code coverage results'
