@@ -1,7 +1,7 @@
 # Core Dependencies
 python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic>=2.7.4
+pydantic-settings>=2.1.0
 
 # LLM & AI Frameworks
 langchain==0.1.20
@@ -35,7 +35,7 @@ rank-bm25==0.2.2
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
-pydantic[email]==2.5.0
+pydantic[email]>=2.7.4
 
 # UI
 streamlit==1.30.0
@@ -55,6 +55,7 @@ prometheus-client==0.19.0
 pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0
+pytest-mock==3.15.1
 
 # Development Tools
 black==23.12.1
