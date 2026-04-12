@@ -1,6 +1,6 @@
 trigger:
 - main
-- fix/ci-and-phase-2-2-issue
+- fix/*
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -34,8 +34,9 @@ steps:
     testRunTitle: 'Python Unit Tests'
   displayName: 'Publish test results'
 
-- task: PublishCodeCoverageResults@2
+- task: PublishCodeCoverageResults@1
   inputs:
+    codeCoverageTool: 'Cobertura'
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
     reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
   displayName: 'Publish code coverage'
