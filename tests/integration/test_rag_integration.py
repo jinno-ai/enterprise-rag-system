@@ -8,6 +8,37 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import Mock, patch
+from app.services.retrieval import HybridRetriever, RetrievalResult
+from app.services.rag_pipeline import RAGPipeline
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_embeddings():
+    """Mock OpenAI embeddings to avoid live API calls in integration tests"""
+    with patch('app.core.embeddings.openai') as mock_openai:
+        # Mock response for a list of texts
+        mock_data = Mock()
+        mock_data.embedding = [0.1] * 1536
+
+        mock_response = Mock()
+        mock_response.data = [mock_data for _ in range(100)] # Plenty of mocks
+
+        mock_openai.embeddings.create.return_value = mock_response
+        yield mock_openai
+
+
+@pytest.fixture(autouse=True)
+def mock_openai_chat():
+    """Mock OpenAI chat completions to avoid live API calls in integration tests"""
+    with patch('app.services.rag_pipeline.openai') as mock_openai:
+        mock_response = Mock()
+        mock_response.choices = [
+            Mock(message=Mock(content="Mocked integration test answer."))
+        ]
+        mock_response.usage = Mock(total_tokens=50)
+        mock_openai.chat.completions.create.return_value = mock_response
+        yield mock_openai
 
 
 @pytest.fixture
@@ -89,6 +120,10 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
 
+    # Initialize index if needed
+    if vector_db.index is None:
+        vector_db.create_index(dimension=len(embeddings[0]))
+
     # Test add documents
     vector_db.add_documents(
         documents=texts,
@@ -120,6 +155,10 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
+
+    if vector_db.index is None:
+        vector_db.create_index(dimension=len(embeddings[0]))
+
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
@@ -148,12 +187,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -207,6 +248,9 @@ def test_retrieval_with_filters():
         {"category": "tech"}
     ]
 
+    if vector_db.index is None:
+        vector_db.create_index(dimension=len(embeddings[0]))
+
     vector_db.add_documents(documents, embeddings, metadatas)
 
     # Search with filter
@@ -233,6 +277,9 @@ def test_confidence_calculation():
     vector_db.connect()
     embedding_model = get_embedding_model()
 
+    if vector_db.index is None:
+        vector_db.create_index(dimension=1536) # Default for mocked embeddings
+
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -241,7 +288,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 

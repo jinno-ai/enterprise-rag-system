@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import uuid
 from dataclasses import dataclass
 
 
@@ -62,6 +64,38 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """
+        Helper method to add documents with automatic ID generation.
+
+        Args:
+            documents: List of document texts
+            embeddings: List of document embeddings
+            metadatas: Optional list of metadata dictionaries
+
+        Returns:
+            List of generated document IDs
+        """
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        if len(documents) != len(metadatas):
+            raise ValueError("Number of documents must match number of metadatas")
+
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Ensure text is in metadata for retrieval
+        for i, doc in enumerate(documents):
+            metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -240,6 +274,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -274,7 +309,9 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # If we have a filter, we need to search more then filter
+        search_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +321,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply metadata filtering
+                if filter_dict:
+                    match = True
+                    for k, v in filter_dict.items():
+                        if metadata.get(k) != v:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
@@ -315,6 +366,9 @@ class FAISSVectorDB(VectorDB):
         import faiss
         import pickle
         
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
         faiss.write_index(self.index, path)
         
         # Save metadata
