@@ -17,7 +17,7 @@ class RetrievalResult:
     document: str
     score: float
     metadata: Dict[str, Any]
-    source: str
+    source: str = "unknown"
 
 
 class HybridRetriever:
