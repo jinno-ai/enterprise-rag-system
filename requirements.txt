@@ -2,6 +2,7 @@
 python-dotenv==1.0.0
 pydantic>=2.7.4
 pydantic-settings>=2.1.0
+pydantic[email]>=2.7.4
 
 # LLM & AI Frameworks
 langchain==0.1.20
@@ -35,7 +36,6 @@ rank-bm25==0.2.2
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
-pydantic[email]==2.5.0
 
 # UI
 streamlit==1.30.0
