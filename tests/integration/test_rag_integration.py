@@ -74,7 +74,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+def test_vector_db_operations(temp_vector_db, sample_documents, mocker):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -84,6 +84,11 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Mock embeddings
+    mock_embeddings = [[0.1] * 1536 for _ in sample_documents]
+    mocker.patch.object(embedding_model, 'embed_texts', return_value=mock_embeddings)
+    mocker.patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -105,7 +110,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+def test_hybrid_retrieval(temp_vector_db, sample_documents, mocker):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -116,6 +121,11 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Mock embeddings
+    mock_embeddings = [[0.1] * 1536 for _ in sample_documents]
+    mocker.patch.object(embedding_model, 'embed_texts', return_value=mock_embeddings)
+    mocker.patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
@@ -148,12 +158,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -188,7 +200,7 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(mocker):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -197,6 +209,10 @@ def test_retrieval_with_filters():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Mock embeddings
+    mocker.patch.object(embedding_model, 'embed_texts', return_value=[[0.1] * 1536 for _ in range(3)])
+    mocker.patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -222,7 +238,7 @@ def test_retrieval_with_filters():
 
 
 @pytest.mark.integration
-def test_confidence_calculation():
+def test_confidence_calculation(mocker):
     """Test confidence score calculation"""
     from app.services.retrieval import RetrievalResult
     from app.services.rag_pipeline import RAGPipeline
@@ -233,6 +249,10 @@ def test_confidence_calculation():
     vector_db.connect()
     embedding_model = get_embedding_model()
 
+    # Mock OpenAI API key requirement
+    mocker.patch('app.core.config.settings.openai_api_key', 'sk-dummy')
+
+    from app.services.retrieval import HybridRetriever
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -241,7 +261,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
