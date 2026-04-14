@@ -5,6 +5,7 @@ This module implements hybrid search and retrieval logic.
 """
 
 from typing import List, Dict, Any, Optional
+import re
 from dataclasses import dataclass
 from app.core.vectordb import VectorDB, SearchResult
 from app.core.embeddings import EmbeddingModel
@@ -46,7 +47,6 @@ class HybridRetriever:
         """Build BM25 index for keyword search"""
         try:
             from rank_bm25 import BM25Okapi
-            import re
             
             # Tokenize documents
             tokenized_docs = []
@@ -87,8 +87,6 @@ class HybridRetriever:
         """Perform BM25 keyword search"""
         if not self.bm25_index:
             return []
-        
-        import re
         
         # Tokenize query
         query_tokens = re.findall(r'\w+', query.lower())
