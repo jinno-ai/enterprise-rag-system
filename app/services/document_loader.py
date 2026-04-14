@@ -17,6 +17,11 @@ class Document:
     metadata: Dict[str, Any]
     doc_id: Optional[str] = None
     
+    @property
+    def text(self) -> str:
+        """Alias for content to support older CLI expectations"""
+        return self.content
+
     def __post_init__(self):
         """Generate document ID if not provided"""
         if not self.doc_id:
@@ -32,6 +37,10 @@ class Document:
 class DocumentLoader:
     """Base class for document loaders"""
     
+    def __init__(self, embedding_model: Optional[Any] = None):
+        self.embedding_model = embedding_model
+        self.splitter = TextSplitter()
+
     @staticmethod
     def load_text_file(file_path: str) -> Document:
         """Load a plain text file"""
@@ -152,6 +161,30 @@ class DocumentLoader:
         
         print(f"Successfully loaded {len(documents)} documents")
         return documents
+
+    def load_file(self, file_path: str) -> List[Document]:
+        """Load a single file based on its extension"""
+        path = Path(file_path)
+        ext = path.suffix.lower()
+
+        if ext == '.pdf':
+            return self.load_pdf(file_path)
+        elif ext == '.md':
+            return [self.load_markdown(file_path)]
+        elif ext == '.txt':
+            return [self.load_text_file(file_path)]
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")
+
+    def chunk_documents(
+        self,
+        documents: List[Document],
+        chunk_size: int = 500,
+        overlap: int = 50
+    ) -> List[Document]:
+        """Split documents into smaller chunks"""
+        splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=overlap)
+        return splitter.split_documents(documents)
 
 
 class TextSplitter:
