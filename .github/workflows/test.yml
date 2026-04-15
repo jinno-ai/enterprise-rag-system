@@ -17,7 +17,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest pytest-cov
       - name: Run tests
         env:
           OPENAI_API_KEY: sk-dummy
