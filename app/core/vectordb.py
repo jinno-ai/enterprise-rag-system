@@ -11,10 +11,6 @@ import pickle
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
-try:
-    import faiss
-except ImportError:
-    faiss = None
 
 from dataclasses import dataclass
 
@@ -203,7 +199,7 @@ class PineconeVectorDB(VectorDB):
     def get_stats(self) -> Dict[str, Any]:
         """Get Pinecone index statistics"""
         if not self.index:
-            raise RuntimeError("Not connected to Pinecone. Call description_index_stats() failed")
+            raise RuntimeError("Not connected to Pinecone. Call describe_index_stats() failed")
         
         stats = self.index.describe_index_stats()
         return {
@@ -222,30 +218,26 @@ class FAISSVectorDB(VectorDB):
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
         self.id_to_idx: Dict[str, int] = {}
         self.idx_to_id: Dict[int, str] = {}
-        if faiss is None:
-            print("⚠️  FAISS not installed. Some features may not work.")
     
     def connect(self) -> None:
         """Load FAISS index from disk"""
-        if faiss is None:
-            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
-            
         try:
+            import faiss
+
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
-        except Exception as e:
-            print(f"❌ Failed to load FAISS index: {e}")
+        except ImportError:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
     
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
-        if faiss is None:
-            raise ImportError("faiss not installed.")
-            
         try:
+            import faiss
+
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
             elif metric == "euclidean":
@@ -255,8 +247,8 @@ class FAISSVectorDB(VectorDB):
             
             print(f"✅ Created FAISS index with dimension: {dimension}")
         
-        except Exception as e:
-            raise RuntimeError(f"Failed to create FAISS index: {e}")
+        except ImportError:
+            raise ImportError("faiss not installed. Run: pip install faiss-cpu")
     
     def upsert(
         self,
@@ -266,11 +258,10 @@ class FAISSVectorDB(VectorDB):
     ) -> None:
         """Insert or update vectors in FAISS"""
         if self.index is None:
-            # Auto-initialize if not created
-            if vectors:
-                self.create_index(len(vectors[0]))
-            else:
-                raise RuntimeError("Index not created and no vectors provided.")
+            raise RuntimeError("Index not created. Call create_index() first.")
+
+        import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -299,6 +290,9 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
+        import numpy as np
+        import faiss
+
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
@@ -359,9 +353,12 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("No index to save")
         
+        import faiss
+        import pickle
+
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        
+
         faiss.write_index(self.index, path)
         
         # Save metadata

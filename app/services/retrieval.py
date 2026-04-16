@@ -4,9 +4,9 @@ Retrieval Service for RAG System
 This module implements hybrid search and retrieval logic.
 """
 
+import re
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-import re
 from app.core.vectordb import VectorDB, SearchResult
 from app.core.embeddings import EmbeddingModel
 from app.services.document_loader import Document
