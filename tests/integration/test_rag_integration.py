@@ -8,6 +8,8 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import Mock, patch
+from app.services.retrieval import RetrievalResult
 
 
 @pytest.fixture
@@ -37,11 +39,20 @@ def sample_documents():
     ]
 
 
+@pytest.fixture
+def mock_embedding_model():
+    """Mock embedding model to avoid API calls"""
+    mock = Mock()
+    mock.embed_texts.return_value = [[0.1] * 1536 for _ in range(3)]
+    mock.embed_query.return_value = [0.1] * 1536
+    mock.dimension = 1536
+    return mock
+
+
 @pytest.mark.integration
-def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
+def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents, mock_embedding_model):
     """Test complete RAG pipeline"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
 
@@ -49,11 +60,9 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
 
-    embedding_model = get_embedding_model()
-
     retriever = HybridRetriever(
         vector_db=vector_db,
-        embedding_model=embedding_model,
+        embedding_model=mock_embedding_model,
         alpha=0.5
     )
 
@@ -67,27 +76,23 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     # Test query
     question = "What is machine learning?"
 
-    # Note: This will fail if no documents are indexed
-    # In real integration tests, you would first ingest documents
     assert pipeline is not None
     assert retriever is not None
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+def test_vector_db_operations(temp_vector_db, sample_documents, mock_embedding_model):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
-
-    embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=1536)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
-    embeddings = embedding_model.embed_texts(texts)
+    embeddings = mock_embedding_model.embed_texts(texts)
 
     # Test add documents
     vector_db.add_documents(
@@ -98,34 +103,32 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
     # Test search
     query = "artificial intelligence and machine learning"
-    query_embedding = embedding_model.embed_query(query)
+    query_embedding = mock_embedding_model.embed_query(query)
     results = vector_db.search(query_embedding, top_k=3)
 
     assert len(results) > 0
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+def test_hybrid_retrieval(temp_vector_db, sample_documents, mock_embedding_model):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
     vector_db.connect()
-
-    embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=1536)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
-    embeddings = embedding_model.embed_texts(texts)
+    embeddings = mock_embedding_model.embed_texts(texts)
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
     retriever = HybridRetriever(
         vector_db=vector_db,
-        embedding_model=embedding_model,
+        embedding_model=mock_embedding_model,
         alpha=0.5
     )
 
@@ -139,7 +142,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
 @pytest.mark.integration
 def test_context_compression():
     """Test context compression for long documents"""
-    from app.services.retrieval import ContextCompressor, RetrievalResult
+    from app.services.retrieval import ContextCompressor
 
     compressor = ContextCompressor(max_tokens=200)
 
@@ -148,12 +151,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -165,19 +170,18 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+def test_batch_query(mock_embedding_model):
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
+    vector_db.create_index(dimension=1536)
 
-    embedding_model = get_embedding_model()
-    retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
+    retriever = HybridRetriever(vector_db=vector_db, embedding_model=mock_embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
     # Batch query
@@ -188,19 +192,17 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+def test_retrieval_with_filters(mock_embedding_model):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
-
-    embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=1536)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
-    embeddings = embedding_model.embed_texts(documents)
+    embeddings = mock_embedding_model.embed_texts(documents)
     metadatas = [
         {"category": "tech"},
         {"category": "business"},
@@ -210,7 +212,7 @@ def test_retrieval_with_filters():
     vector_db.add_documents(documents, embeddings, metadatas)
 
     # Search with filter
-    query_embedding = embedding_model.embed_query("test")
+    query_embedding = mock_embedding_model.embed_query("test")
     results = vector_db.search(
         query_embedding,
         top_k=10,
@@ -222,18 +224,17 @@ def test_retrieval_with_filters():
 
 
 @pytest.mark.integration
-def test_confidence_calculation():
+def test_confidence_calculation(mock_embedding_model):
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
-    from app.core.embeddings import get_embedding_model
+    from app.services.retrieval import HybridRetriever
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
-    embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=1536)
 
-    retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
+    retriever = HybridRetriever(vector_db=vector_db, embedding_model=mock_embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
     # Test with high-quality results
@@ -241,7 +242,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
