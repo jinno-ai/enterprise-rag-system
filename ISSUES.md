@@ -75,3 +75,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: クエリ拡張（Multi-Query / HyDE）による検索精度の向上
+
+**タイトル:** クエリ拡張（Multi-Query / HyDE）による検索精度の向上
+
+**内容:**
+現在のRAGパイプラインでは、ユーザーのクエリをそのままベクトル検索に使用しています。しかし、ユーザーの入力が短かったり、語彙がドキュメントと一致しなかったりする場合、関連するドキュメントを十分に取得できない（Recallが低い）という課題があります。
+
+**タスク:**
+- [ ] `app/services/query_expansion.py` モジュールの作成
+- [ ] `MultiQueryRewriter` クラスの実装
+- [ ] `HyDEGenerator` クラスの実装
+- [ ] `RAGPipeline` への統合（オプションで切り替え可能にする）
+- [ ] 性能評価とパラメータ調整
