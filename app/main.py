@@ -14,7 +14,7 @@ from app.core.vectordb import get_vector_db
 from app.core.embeddings import get_embedding_model
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
-from app.api.routes import query, health, ingest
+from app.api.routes import query, health, ingest, documents
 
 
 settings = get_settings()
@@ -94,6 +94,7 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
+app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 
 
 @app.get("/")
