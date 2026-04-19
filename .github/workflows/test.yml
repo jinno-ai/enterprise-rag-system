@@ -19,5 +19,8 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
       - name: Run tests
-        run: pytest tests/ -v --cov=app
-        continue-on-error: true
+        env:
+          OPENAI_API_KEY: sk-dummy
+        run: |
+          export PYTHONPATH=.
+          pytest tests/ -v --cov=app
