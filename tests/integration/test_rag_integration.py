@@ -85,7 +85,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents, mocker):
 
     embedding_model = get_embedding_model()
 
-    # Mock embeddings
+    # Mock embeddings to avoid API calls
     mock_embeddings = [[0.1] * 1536 for _ in sample_documents]
     mocker.patch.object(embedding_model, 'embed_texts', return_value=mock_embeddings)
     mocker.patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536)
@@ -122,7 +122,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents, mocker):
 
     embedding_model = get_embedding_model()
 
-    # Mock embeddings
+    # Mock embeddings to avoid API calls
     mock_embeddings = [[0.1] * 1536 for _ in sample_documents]
     mocker.patch.object(embedding_model, 'embed_texts', return_value=mock_embeddings)
     mocker.patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536)
@@ -210,7 +210,7 @@ def test_retrieval_with_filters(mocker):
 
     embedding_model = get_embedding_model()
 
-    # Mock embeddings
+    # Mock embeddings to avoid API calls
     mocker.patch.object(embedding_model, 'embed_texts', return_value=[[0.1] * 1536 for _ in range(3)])
     mocker.patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536)
 

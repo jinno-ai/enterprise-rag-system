@@ -79,23 +79,6 @@ class VectorDB(ABC):
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
     
-    def add_documents(
-        self,
-        documents: List[str],
-        embeddings: List[List[float]],
-        metadatas: Optional[List[Dict[str, Any]]] = None
-    ) -> None:
-        """Insert or update documents in Pinecone"""
-        import uuid
-        if metadatas is None:
-            metadatas = [{} for _ in documents]
-
-        for doc, meta in zip(documents, metadatas):
-            meta["text"] = doc
-
-        ids = [str(uuid.uuid4()) for _ in documents]
-        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
-
     def __init__(self, api_key: str, environment: str, index_name: str):
         self.api_key = api_key
         self.environment = environment
@@ -216,18 +199,13 @@ class PineconeVectorDB(VectorDB):
             "index_fullness": stats.index_fullness
         }
 
-
-class FAISSVectorDB(VectorDB):
-    """FAISS vector database implementation (for local development)"""
-    
     def add_documents(
         self,
         documents: List[str],
         embeddings: List[List[float]],
         metadatas: Optional[List[Dict[str, Any]]] = None
     ) -> None:
-        """Insert or update documents in FAISS"""
-        import uuid
+        """Insert or update documents in Pinecone"""
         if metadatas is None:
             metadatas = [{} for _ in documents]
 
@@ -235,12 +213,11 @@ class FAISSVectorDB(VectorDB):
             meta["text"] = doc
 
         ids = [str(uuid.uuid4()) for _ in documents]
-
-        # Auto-initialize index if needed
-        if self.index is None and embeddings:
-            self.create_index(dimension=len(embeddings[0]))
-
         self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
+
+class FAISSVectorDB(VectorDB):
+    """FAISS vector database implementation (for local development)"""
 
     def __init__(self, index_path: Optional[str] = None):
         self.index_path = index_path
@@ -257,6 +234,17 @@ class FAISSVectorDB(VectorDB):
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata if exists
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    import pickle
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -396,6 +384,27 @@ class FAISSVectorDB(VectorDB):
             }, f)
         
         print(f"✅ Saved FAISS index to: {path}")
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Insert or update documents in FAISS"""
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        for doc, meta in zip(documents, metadatas):
+            meta["text"] = doc
+
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Auto-initialize index if needed
+        if self.index is None and embeddings:
+            self.create_index(dimension=len(embeddings[0]))
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 def get_vector_db(db_type: str = "faiss", **kwargs) -> VectorDB:
