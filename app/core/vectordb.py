@@ -5,6 +5,8 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import uuid
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -61,6 +63,16 @@ class VectorDB(ABC):
     @abstractmethod
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
+        pass
+
+    @abstractmethod
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Add documents to the vector database"""
         pass
 
 
@@ -187,10 +199,26 @@ class PineconeVectorDB(VectorDB):
             "index_fullness": stats.index_fullness
         }
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Insert or update documents in Pinecone"""
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        for doc, meta in zip(documents, metadatas):
+            meta["text"] = doc
+
+        ids = [str(uuid.uuid4()) for _ in documents]
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
 
 class FAISSVectorDB(VectorDB):
     """FAISS vector database implementation (for local development)"""
-    
+
     def __init__(self, index_path: Optional[str] = None):
         self.index_path = index_path
         self.index = None
@@ -206,6 +234,17 @@ class FAISSVectorDB(VectorDB):
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata if exists
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    import pickle
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -240,6 +279,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -274,7 +314,10 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # FAISS doesn't support metadata filtering natively in IndexFlat
+        # We fetch more results and filter in Python
+        fetch_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, fetch_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +327,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filter
+                if filter_dict:
+                    match = True
+                    for k, v in filter_dict.items():
+                        if metadata.get(k) != v:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
@@ -327,6 +384,27 @@ class FAISSVectorDB(VectorDB):
             }, f)
         
         print(f"✅ Saved FAISS index to: {path}")
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Insert or update documents in FAISS"""
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        for doc, meta in zip(documents, metadatas):
+            meta["text"] = doc
+
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Auto-initialize index if needed
+        if self.index is None and embeddings:
+            self.create_index(dimension=len(embeddings[0]))
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 def get_vector_db(db_type: str = "faiss", **kwargs) -> VectorDB:
