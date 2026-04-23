@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 【Phase 1.2】Cross-Encoder による高精度なリランキング機能の導入
+
+**タイトル:** Cross-Encoder (BGE-reranker / Cohere Rerank) による検索精度の向上
+
+**内容:**
+現在のシステムは RRF (Reciprocal Rank Fusion) を用いてセマンティック検索とキーワード検索を統合していますが、これはドキュメントの相対的な順位のみに基づいています。クエリと候補チャンクの深い意味的関係をスコアリングする Cross-Encoder によるリランキングを導入することで、検索の精度 (Precision) を大幅に向上させます。
+
+**タスク:**
+- [ ] `sentence-transformers` を用いた local Cross-Encoder (BGE-reranker) の統合
+- [ ] Cohere Rerank API を使用するオプションの実装
+- [ ] `HybridRetriever` または `RAGPipeline` 内で、上位 N 件に対するリランキング処理を追加
+- [ ] 設定ファイル (`Settings`) にリランカーのモデル名や有効フラグを追加
