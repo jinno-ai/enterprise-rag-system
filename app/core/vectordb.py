@@ -64,6 +64,37 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        ids: Optional[List[str]] = None
+    ) -> None:
+        """
+        Helper method to add documents with automated ID generation
+
+        Args:
+            documents: List of document texts
+            embeddings: List of document embeddings
+            metadatas: Optional list of metadata dictionaries
+            ids: Optional list of document IDs
+        """
+        import uuid
+
+        if ids is None:
+            ids = [str(uuid.uuid4()) for _ in documents]
+
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        # Ensure 'text' is in metadata for retrieval
+        for meta, doc in zip(metadatas, documents):
+            if "text" not in meta:
+                meta["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
@@ -241,6 +272,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -275,7 +307,9 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # FAISS doesn't support filtering, so we fetch more and filter manually
+        fetch_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, fetch_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -285,12 +319,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filter if provided
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
