@@ -68,3 +68,6 @@ pre-commit==3.6.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 tenacity==8.2.3
+
+# Constrain numpy
+numpy<2.0.0
