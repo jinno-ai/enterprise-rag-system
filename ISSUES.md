@@ -75,3 +75,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: RAGASによる自動評価パイプラインの導入
+
+**タイトル:** 【Phase 5.1】RAGASによる自動評価パイプラインの導入
+
+**内容:**
+RAGシステムの検索精度（Context Precision/Recall）および回答の妥当性（Faithfulness/Answer Relevancy）を定量的に評価するため、RAGASライブラリを用いた評価パイプラインを構築します。
+
+**タスク:**
+- [ ] RAGASライブラリの導入 (`pip install ragas`)
+- [ ] 評価用データセット（Question, Context, Answer, Ground Truth）の作成
+- [ ] Context Precision/Recall の計測実装
+- [ ] Faithfulness/Answer Relevancy の計測実装
+- [ ] CIパイプラインへの評価ステップの統合
