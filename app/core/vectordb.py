@@ -7,6 +7,7 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+import os
 import numpy as np
 from dataclasses import dataclass
 
@@ -43,6 +44,16 @@ class VectorDB(ABC):
         """Insert or update vectors"""
         pass
     
+    @abstractmethod
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents with their embeddings and metadata"""
+        pass
+
     @abstractmethod
     def search(
         self,
@@ -139,6 +150,23 @@ class PineconeVectorDB(VectorDB):
         
         print(f"✅ Upserted {len(items)} vectors")
     
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents to Pinecone"""
+        import uuid
+
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Update metadata with document text
+        for meta, text in zip(metadatas, documents):
+            meta["text"] = text
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
     def search(
         self,
         query_vector: List[float],
@@ -236,11 +264,15 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
         import numpy as np
         
+        if self.index is None:
+            if not vectors:
+                return
+            dimension = len(vectors[0])
+            self.create_index(dimension)
+        import faiss
+
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
@@ -258,6 +290,23 @@ class FAISSVectorDB(VectorDB):
         
         print(f"✅ Upserted {len(vectors)} vectors")
     
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Add documents to FAISS"""
+        import uuid
+
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Update metadata with document text
+        for meta, text in zip(metadatas, documents):
+            meta["text"] = text
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
     def search(
         self,
         query_vector: List[float],
@@ -271,10 +320,13 @@ class FAISSVectorDB(VectorDB):
         import numpy as np
         import faiss
         
+        # Increase search pool if filters are applied, as FAISS doesn't support them natively
+        fetch_k = top_k * 10 if filter_dict else top_k
+
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        distances, indices = self.index.search(query_np, fetch_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +336,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Manual metadata filtering
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+            if len(search_results) >= top_k:
+                break
         
         return search_results
     

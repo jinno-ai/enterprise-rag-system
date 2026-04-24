@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: "sk-dummy"
+      PYTHONPATH: "."
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,4 +23,3 @@ jobs:
           pip install pytest pytest-cov
       - name: Run tests
         run: pytest tests/ -v --cov=app
-        continue-on-error: true
