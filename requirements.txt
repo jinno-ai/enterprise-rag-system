@@ -1,22 +1,22 @@
 # Core Dependencies
 python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
 
 # LLM & AI Frameworks
-langchain==0.1.0
-langchain-community==0.0.10
+langchain==0.1.20
+langchain-community==0.0.38
 langchain-openai==0.0.5
-langchain-anthropic==0.0.4
+langchain-anthropic==0.1.1
 langchain-google-genai==0.0.6
 openai==1.10.0
-anthropic==0.8.1
+anthropic==0.25.8
 cohere==4.40
 
 # Vector Databases
 pinecone-client==3.0.0
 weaviate-client==3.26.0
-faiss-cpu==1.7.4
+faiss-cpu==1.8.0
 chromadb==0.4.22
 
 # Document Processing
@@ -35,7 +35,7 @@ rank-bm25==0.2.2
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
-pydantic[email]==2.5.0
+pydantic[email]==2.12.5
 
 # UI
 streamlit==1.30.0
@@ -44,19 +44,18 @@ pandas==2.1.4
 
 # Caching & Performance
 redis==5.0.1
-httpx==0.26.0
-asyncio==3.4.3
+httpx==0.27.0
 
 # Monitoring & Observability
-langsmith==0.0.77
-arize-phoenix==2.0.0
+langsmith==0.1.147
+arize-phoenix==3.13.0
 prometheus-client==0.19.0
 
 # Testing
-pytest==7.4.3
+pytest==8.3.4
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0
-httpx==0.26.0
+pytest-mock==3.15.1
 
 # Development Tools
 black==23.12.1
@@ -68,3 +67,6 @@ pre-commit==3.6.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 tenacity==8.2.3
+
+# Constrain numpy
+numpy<2.0.0
