@@ -5,6 +5,9 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import uuid
+import pickle
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
