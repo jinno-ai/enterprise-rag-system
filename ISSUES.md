@@ -75,3 +75,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Query Enhancement (HyDE, Multi-Query) の導入
+
+**タイトル:** 【Phase 1.3】Query Enhancement の実装による検索精度の向上
+
+**内容:**
+現在の検索システムは、ユーザーのクエリを直接埋め込んで検索する基本的なハイブリッド検索のみを提供しています。検索精度（特にRecall）をさらに向上させるため、ロードマップ Phase 1.3 に基づき、クエリ拡張（Query Enhancement）技術を導入する必要があります。
+
+**タスク:**
+- [ ] クエリ拡張用のLLMチェーン（HyDE等）を作成する
+- [ ] HyDE (Hypothetical Document Embeddings) 実装クラスの追加
+- [ ] Multi-Query 生成ロジックの追加
+- [ ] HybridRetriever への統合とオプション化
+- [ ] 既存の RAGPipeline での有効化
