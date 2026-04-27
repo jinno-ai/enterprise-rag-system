@@ -75,3 +75,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 8: 【バグ】FAISSVectorDB におけるメタデータの永続化と復元の不備
+
+**タイトル:** FAISSVectorDB の接続処理における `os` インポート漏れとメタデータ復元処理の欠如
+
+**内容:**
+FAISSVectorDB 実装において、インデックスの永続化と復元に関する以下の不具合が確認されました。
+
+1. **`NameError: name 'os' is not defined`**: `connect` メソッドで `os.path.exists` を使用していますが、ファイル冒頭で `os` がインポートされていません。
+2. **メタデータの消失**: `save` メソッドでメタデータを `.metadata.pkl` として保存していますが、`connect` メソッド（復元処理）でこれを読み込んでいません。そのため、アプリケーション再起動後に検索を行っても、メタデータ（元のテキスト等）が空の状態になります。
+
+**タスク:**
+- [ ] `app/core/vectordb.py` に `import os` および `import pickle` を追加する
+- [ ] `FAISSVectorDB.connect` メソッドを修正し、インデックスファイルが存在する場合に `.metadata.pkl` からメタデータ（`metadata_store`, `id_to_idx`, `idx_to_id`）を復元する処理を追加する
+- [ ] 正常にメタデータが復元されることを確認する単体テストを追加する
