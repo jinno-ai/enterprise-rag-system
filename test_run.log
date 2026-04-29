@@ -1,0 +1,49 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-7.4.3, pluggy-1.6.0
+rootdir: /app
+plugins: mock-3.15.1, anyio-4.13.0, asyncio-0.23.2, cov-4.1.0
+asyncio: mode=Mode.STRICT
+collected 13 items
+
+tests/unit/test_rag_pipeline.py ......                                   [ 46%]
+tests/integration/test_rag_integration.py .......                        [100%]
+
+=============================== warnings summary ===============================
+../home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/pydantic/fields.py:1026: 21 warnings
+  /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/pydantic/fields.py:1026: PydanticDeprecatedSince20: Using extra keyword arguments on `Field` is deprecated and will be removed. Use `json_schema_extra` instead. (Extra keys: 'env'). Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.10/migration/
+    warn(
+
+../home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/pydantic/_internal/_config.py:295
+  /home/jules/.pyenv/versions/3.12.13/lib/python3.12/site-packages/pydantic/_internal/_config.py:295: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.10/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+tests/integration/test_rag_integration.py:41
+  /app/tests/integration/test_rag_integration.py:41: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/integration/test_rag_integration.py:77
+  /app/tests/integration/test_rag_integration.py:77: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/integration/test_rag_integration.py:125
+  /app/tests/integration/test_rag_integration.py:125: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/integration/test_rag_integration.py:169
+  /app/tests/integration/test_rag_integration.py:169: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/integration/test_rag_integration.py:199
+  /app/tests/integration/test_rag_integration.py:199: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/integration/test_rag_integration.py:232
+  /app/tests/integration/test_rag_integration.py:232: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+tests/integration/test_rag_integration.py:277
+  /app/tests/integration/test_rag_integration.py:277: PytestUnknownMarkWarning: Unknown pytest.mark.integration - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.integration
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 13 passed, 29 warnings in 1.37s ========================
