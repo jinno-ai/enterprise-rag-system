@@ -89,6 +89,10 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         ids = [chunk.doc_id for chunk in chunks]
         metadata = [chunk.metadata for chunk in chunks]
         
+        # Ensure 'text' field is present in metadata for HybridRetriever
+        for i, chunk in enumerate(chunks):
+            metadata[i]["text"] = chunk.content
+
         vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
         
         # Save index
@@ -178,6 +182,10 @@ async def upload_document(
             ids = [chunk.doc_id for chunk in chunks]
             metadata = [chunk.metadata for chunk in chunks]
             
+            # Ensure 'text' field is present in metadata for HybridRetriever
+            for i, chunk in enumerate(chunks):
+                metadata[i]["text"] = chunk.content
+
             vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
             
             if hasattr(vector_db, 'save'):

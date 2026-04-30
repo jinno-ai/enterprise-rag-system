@@ -7,6 +7,8 @@ These tests verify end-to-end functionality of the RAG pipeline.
 import pytest
 import tempfile
 import os
+import numpy as np
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 
@@ -74,10 +76,16 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_vector_db_operations(temp_vector_db, sample_documents):
+@patch('openai.embeddings.create')
+def test_vector_db_operations(mock_embed, temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Mock embeddings
+    mock_embed.return_value.data = [
+        MagicMock(embedding=[0.1] * 1536) for _ in sample_documents
+    ]
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -88,6 +96,9 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
+
+    # Initialize index for FAISS
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Test add documents
     vector_db.add_documents(
@@ -105,11 +116,17 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
-def test_hybrid_retrieval(temp_vector_db, sample_documents):
+@patch('openai.embeddings.create')
+def test_hybrid_retrieval(mock_embed, temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
     from app.services.retrieval import HybridRetriever
+
+    # Mock embeddings
+    mock_embed.return_value.data = [
+        MagicMock(embedding=[0.1] * 1536) for _ in sample_documents
+    ] + [MagicMock(embedding=[0.1] * 1536)] # For query
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -120,6 +137,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
+    vector_db.create_index(dimension=embedding_model.dimension)
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
@@ -148,12 +166,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -188,15 +208,24 @@ def test_batch_query():
 
 
 @pytest.mark.integration
-def test_retrieval_with_filters():
+@patch('openai.embeddings.create')
+def test_retrieval_with_filters(mock_embed):
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+
+    # Mock embeddings
+    mock_embed.return_value.data = [
+        MagicMock(embedding=[0.1] * 1536) for _ in range(3)
+    ] + [MagicMock(embedding=[0.1] * 1536)] # For query
 
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+
+    # Create index for FAISS
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -224,7 +253,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -241,7 +270,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
