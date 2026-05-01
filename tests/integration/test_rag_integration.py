@@ -11,14 +11,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 
-@pytest.fixture
-def temp_vector_db():
-    """Create temporary vector database"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        index_path = os.path.join(tmpdir, "test_index.bin")
-        yield index_path
-
-
 @pytest.fixture(autouse=True)
 def mock_openai(mocker):
     """Mock OpenAI components globally for integration tests"""
@@ -38,6 +30,14 @@ def mock_openai(mocker):
     mock_chat.return_value.usage.total_tokens = 50
 
     return mock_embed, mock_chat
+
+
+@pytest.fixture
+def temp_vector_db():
+    """Create temporary vector database"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        index_path = os.path.join(tmpdir, "test_index.bin")
+        yield index_path
 
 
 @pytest.fixture

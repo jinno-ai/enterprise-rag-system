@@ -86,7 +86,22 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 システムの回答精度を定量的かつ継続的に評価するため、RAGAS (Retrieval Augmented Generation Assessment) フレームワークを導入する必要があります。これにより、Faithfulness, Answer Relevancy, Context Precision, Context Recall などの主要なRAG指標を自動的に計測可能にします。
 
 **タスク:**
-- [ ] `ragas` ライブラリの導入 (`requirements.txt` への追加)
+- [x] `ragas` ライブラリの導入 (`requirements.txt` への追加済み)
+- [ ] 評価用テストセット (Question/Context/Answer/Ground Truth) の管理機能の実装
+- [ ] 評価実行スクリプト (`scripts/evaluate.py`) の作成
+- [ ] 評価結果を LangSmith や Arize Phoenix 等のモニタリングツールへ連携する機能の実装
+
+---
+
+## Issue 6: RAGASによる自動評価パイプラインの導入
+
+**タイトル:** RAGASによる自動評価パイプラインの導入と精度メトリクスの可視化
+
+**内容:**
+システムの回答精度を定量的かつ継続的に評価するため、RAGAS (Retrieval Augmented Generation Assessment) フレームワークを導入する必要があります。これにより、Faithfulness, Answer Relevancy, Context Precision, Context Recall などの主要なRAG指標を自動的に計測可能にします。
+
+**タスク:**
+- [x] `ragas` ライブラリの導入 (`requirements.txt` への追加済み)
 - [ ] 評価用テストセット (Question/Context/Answer/Ground Truth) の管理機能の実装
 - [ ] 評価実行スクリプト (`scripts/evaluate.py`) の作成
 - [ ] 評価結果を LangSmith や Arize Phoenix 等のモニタリングツールへ連携する機能の実装

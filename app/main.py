@@ -93,7 +93,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
-app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
+app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
 
 
 @app.get("/")
