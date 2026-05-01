@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 @pytest.fixture
@@ -16,6 +17,27 @@ def temp_vector_db():
     with tempfile.TemporaryDirectory() as tmpdir:
         index_path = os.path.join(tmpdir, "test_index.bin")
         yield index_path
+
+
+@pytest.fixture(autouse=True)
+def mock_openai(mocker):
+    """Mock OpenAI components globally for integration tests"""
+    # Try to patch the main entry points
+    mock_embed = mocker.patch("openai.embeddings.create")
+    mock_chat = mocker.patch("openai.chat.completions.create")
+
+    # Mock embedding response
+    mock_embed.return_value.data = [
+        Mock(embedding=[0.1] * 1536)
+    ]
+
+    # Mock chat response
+    mock_chat.return_value.choices = [
+        Mock(message=Mock(content="This is a mocked RAG answer."))
+    ]
+    mock_chat.return_value.usage.total_tokens = 50
+
+    return mock_embed, mock_chat
 
 
 @pytest.fixture
@@ -84,6 +106,8 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -116,6 +140,8 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
@@ -148,12 +174,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -197,6 +225,8 @@ def test_retrieval_with_filters():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -224,7 +254,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -232,6 +262,8 @@ def test_confidence_calculation():
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
@@ -241,7 +273,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
