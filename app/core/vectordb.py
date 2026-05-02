@@ -76,11 +76,14 @@ class VectorDB(ABC):
         if metadatas is None:
             metadatas = [{} for _ in range(len(documents))]
 
-        # Ensure text is in metadata for retrieval
+        # Ensure text is in metadata for retrieval without mutating original list
+        new_metadatas = []
         for i, doc in enumerate(documents):
-            metadatas[i]["text"] = doc
+            meta = metadatas[i].copy()
+            meta["text"] = doc
+            new_metadatas.append(meta)
 
-        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        self.upsert(vectors=embeddings, ids=ids, metadata=new_metadatas)
 
 
 class PineconeVectorDB(VectorDB):

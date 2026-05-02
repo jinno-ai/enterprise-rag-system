@@ -86,7 +86,7 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 RAGシステムの検索精度（Context Precision/Recall）および回答の妥当性（Faithfulness/Answer Relevancy）を定量的に評価するため、RAGASライブラリを用いた評価パイプラインを構築します。
 
 **タスク:**
-- [ ] RAGASライブラリの導入 (`pip install ragas`)
+- [x] RAGASライブラリの導入 (`pip install ragas`)
 - [ ] 評価用データセット（Question, Context, Answer, Ground Truth）の作成
 - [ ] Context Precision/Recall の計測実装
 - [ ] Faithfulness/Answer Relevancy の計測実装
