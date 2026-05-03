@@ -85,9 +85,10 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
     embedding_model = get_embedding_model()
 
-    # Generate embeddings
+    # Mock embeddings to avoid API call
+    vector_db.create_index(dimension=1536)
     texts = [doc["text"] for doc in sample_documents]
-    embeddings = embedding_model.embed_texts(texts)
+    embeddings = [[0.1] * 1536 for _ in sample_documents]
 
     # Test add documents
     vector_db.add_documents(
@@ -97,8 +98,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     )
 
     # Test search
-    query = "artificial intelligence and machine learning"
-    query_embedding = embedding_model.embed_query(query)
+    query_embedding = [0.1] * 1536
     results = vector_db.search(query_embedding, top_k=3)
 
     assert len(results) > 0
@@ -118,8 +118,9 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     embedding_model = get_embedding_model()
 
     # Index documents
+    vector_db.create_index(dimension=1536)
     texts = [doc["text"] for doc in sample_documents]
-    embeddings = embedding_model.embed_texts(texts)
+    embeddings = [[0.1] * 1536 for _ in sample_documents]
     vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
 
     # Test hybrid retrieval
@@ -130,7 +131,9 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     )
 
     query = "What is deep learning?"
-    results = retriever.retrieve(query, top_k=2, use_hybrid=True)
+    from unittest.mock import patch
+    with patch.object(embedding_model, 'embed_query', return_value=[0.1] * 1536):
+        results = retriever.retrieve(query, top_k=2, use_hybrid=True)
 
     assert len(results) > 0
     assert all(hasattr(r, 'score') for r in results)
@@ -148,12 +151,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -199,8 +204,9 @@ def test_retrieval_with_filters():
     embedding_model = get_embedding_model()
 
     # Index documents with metadata
+    vector_db.create_index(dimension=1536)
     documents = ["Doc 1", "Doc 2", "Doc 3"]
-    embeddings = embedding_model.embed_texts(documents)
+    embeddings = [[0.1] * 1536 for _ in documents]
     metadatas = [
         {"category": "tech"},
         {"category": "business"},
@@ -210,7 +216,7 @@ def test_retrieval_with_filters():
     vector_db.add_documents(documents, embeddings, metadatas)
 
     # Search with filter
-    query_embedding = embedding_model.embed_query("test")
+    query_embedding = [0.1] * 1536
     results = vector_db.search(
         query_embedding,
         top_k=10,
@@ -229,6 +235,7 @@ def test_confidence_calculation():
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
 
+    from app.services.retrieval import HybridRetriever
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
@@ -241,7 +248,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 

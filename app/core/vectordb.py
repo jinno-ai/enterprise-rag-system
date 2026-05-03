@@ -42,6 +42,24 @@ class VectorDB(ABC):
     ) -> None:
         """Insert or update vectors"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]],
+        ids: Optional[List[str]] = None
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        if ids is None:
+            import uuid
+            ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Ensure 'text' is in metadata for retrieval
+        for i, doc in enumerate(documents):
+            metadatas[i]["text"] = doc
+
+        self.upsert(embeddings, ids, metadatas)
     
     @abstractmethod
     def search(
@@ -202,6 +220,7 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import os
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -240,6 +259,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -274,7 +294,10 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # In FAISS, we might need to retrieve more results and filter in-memory
+        # because IndexFlatIP doesn't support native metadata filtering
+        fetch_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, fetch_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +307,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filters
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
