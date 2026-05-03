@@ -75,3 +75,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Re-ranking (再ランキング) 処理の導入
+
+**タイトル:** 【Phase 1.2】Re-ranking (再ランキング) 処理の導入による検索精度の向上
+
+**内容:**
+現在、`HybridRetriever` ではセマンティック検索とキーワード検索の結果を RRF (Reciprocal Rank Fusion) で統合していますが、最終的な回答生成の前に Cross-Encoder 等を用いた再ランキング (Re-ranking) 処理が実装されていません (`app/services/retrieval.py` に TODO が残っています)。
+大規模なドキュメント群からの検索において、精度（Precision）を向上させるために、Cohere Rerank や BGE-Reranker などの導入を検討する必要があります。
+
+**タスク:**
+- [ ] `ContextCompressor` クラスの `_rerank_and_truncate` メソッドを実装する
+- [ ] Cohere Rerank API またはローカルの Cross-Encoder モデルの統合
+- [ ] 検索パラメータ (`top_k` など) との調整
+- [ ] 再ランキングによる精度の向上を評価するテストケースの追加
