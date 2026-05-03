@@ -66,6 +66,32 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> List[str]:
+        """
+        Helper method to add documents with auto-generated IDs
+
+        Args:
+            documents: List of document text strings
+            embeddings: List of embedding vectors
+            metadatas: List of metadata dictionaries
+
+        Returns:
+            List of generated document IDs
+        """
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Add text to metadata for retrieval
+        for meta, text in zip(metadatas, documents):
+            meta["text"] = text
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
@@ -239,8 +265,13 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        import faiss
         if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
+            if vectors:
+                dimension = len(vectors[0])
+                self.create_index(dimension)
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         import numpy as np
         
