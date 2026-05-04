@@ -24,6 +24,7 @@ steps:
   displayName: 'Install dependencies'
 
 - script: |
+    mkdir -p junit
     export OPENAI_API_KEY=$(OPENAI_API_KEY)
     pytest tests/unit --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
   displayName: 'Run unit tests'
@@ -35,9 +36,7 @@ steps:
     testRunTitle: 'Python $(python.version) Unit Tests'
   displayName: 'Publish test results'
 
-- task: PublishCodeCoverageResults@1
+- task: PublishCodeCoverageResults@2
   inputs:
-    codeCoverageTool: Cobertura
     summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
-    reportDirectory: '$(System.DefaultWorkingDirectory)/**/htmlcov'
   displayName: 'Publish code coverage'
