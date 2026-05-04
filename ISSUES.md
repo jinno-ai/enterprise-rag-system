@@ -75,3 +75,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 【Phase 1.2】Cross-Encoder による高精度なリランキング機能の導入
+
+**タイトル:** Cross-Encoder Reranker の実装による検索精度の向上
+
+**内容:**
+現在の `HybridRetriever` は、ベクトル検索とキーワード検索（BM25）の結果を Reciprocal Rank Fusion (RRF) で統合していますが、最終的な回答生成に使用するチャンクの精度をさらに向上させるために、Cross-Encoder によるリランキングが計画されています（`app/services/retrieval.py` の `ContextCompressor._rerank_and_truncate` に TODO があります）。
+
+リトリーバーが抽出した候補ドキュメントに対して、クエリとドキュメントのペアを直接入力とする Cross-Encoder モデルを用いてスコアリングを行い、最も関連性の高い情報を上位に配置することで、RAG の精度を向上させます。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` の `ContextCompressor` クラスをリファクタリングし、Cross-Encoder によるリランキングをサポートする
+- [ ] `SentenceTransformerReranker` などのクラスを新規作成し、`cross-encoder/ms-marco-MiniLM-L-12-v2` などの軽量かつ高性能なモデルを利用可能にする
+- [ ] `HybridRetriever.retrieve` メソッド、または `RAGPipeline.query` 内で、リランキング処理を選択的に実行できるようにする
+- [ ] リランキング後のスコアに基づいてコンテキストを構築するロジックを実装する

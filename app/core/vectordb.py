@@ -6,6 +6,7 @@ supporting Pinecone, Weaviate, and FAISS.
 """
 
 from typing import List, Dict, Any, Optional
+import os
 from abc import ABC, abstractmethod
 import numpy as np
 from dataclasses import dataclass
@@ -240,6 +241,7 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
