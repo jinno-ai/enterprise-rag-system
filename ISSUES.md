@@ -75,3 +75,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 【機能実装】モック版インジェストAPIの刷新とBM25インデックスの永続化
+
+**タイトル:** モック版インジェストAPIの刷新とBM25インデックスの永続化
+
+**内容:**
+現在、`app/api/routes/ingest.py` はモック実装であり、実際のドキュメント登録機能を持つ `app/api/routes/documents.py` が `app/main.py` で利用されていません。また、`HybridRetriever` で使用される BM25 インデックスがメモリ保持のみのため、再起動時に消失します。
+
+**タスク:**
+- [ ] `app/main.py` のルーター設定を `documents.router` に変更し、モックを置き換える
+- [ ] `HybridRetriever` に BM25 インデックスの保存 (`save`) および読み込み (`load`) メソッドを実装する
+- [ ] インジェスト完了時に BM25 インデックスを自動保存する仕組みを導入する
