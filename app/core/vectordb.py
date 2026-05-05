@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
 from dataclasses import dataclass
 
 
@@ -20,8 +21,29 @@ class SearchResult:
     text: str
 
 
+import uuid
+
 class VectorDB(ABC):
     """Abstract base class for vector database operations"""
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """Helper to add documents with auto-generated IDs"""
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Ensure 'text' is in metadata for SearchResult retrieval
+        for i, doc in enumerate(documents):
+            metadatas[i]['text'] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
     
     @abstractmethod
     def connect(self) -> None:
@@ -236,10 +258,16 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
         import numpy as np
+        import faiss
+
+        if self.index is None:
+            # Auto-initialize index with first vector dimension
+            if vectors:
+                dimension = len(vectors[0])
+                self.create_index(dimension)
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
