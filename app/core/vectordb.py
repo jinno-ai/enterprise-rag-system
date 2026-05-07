@@ -5,6 +5,8 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import uuid
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -43,6 +45,22 @@ class VectorDB(ABC):
         """Insert or update vectors"""
         pass
     
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper to add documents with automated ID generation"""
+        import uuid
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        # Add text to metadata
+        for i, doc in enumerate(documents):
+            metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+
     @abstractmethod
     def search(
         self,
