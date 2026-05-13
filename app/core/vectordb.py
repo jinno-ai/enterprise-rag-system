@@ -8,6 +8,9 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import uuid
+import pickle
 from dataclasses import dataclass
 
 
@@ -62,6 +65,20 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper method to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+        # Ensure text is in metadata for SearchResult compatibility
+        for i, doc in enumerate(documents):
+            metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,10 +253,12 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        import faiss
         if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
-        import numpy as np
+            if vectors:
+                self.create_index(len(vectors[0]))
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -268,7 +287,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
@@ -313,7 +331,6 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
