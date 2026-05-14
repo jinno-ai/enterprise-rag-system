@@ -5,6 +5,10 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import uuid
+import pickle
+import faiss
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -62,6 +66,19 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+        # Ensure text is in metadata for retrieval
+        for i, meta in enumerate(metadatas):
+            meta['text'] = documents[i]
+        self.upsert(embeddings, ids, metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,6 +253,9 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        if self.index is None and vectors:
+            self.create_index(len(vectors[0]))
+
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
