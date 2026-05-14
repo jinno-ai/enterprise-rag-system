@@ -75,10 +75,13 @@ class VectorDB(ABC):
     ) -> None:
         """Helper to add documents with auto-generated IDs"""
         ids = [str(uuid.uuid4()) for _ in range(len(documents))]
-        # Ensure text is in metadata for retrieval
+        # Ensure text is in metadata for retrieval without modifying input in-place
+        prepared_metadatas = []
         for i, meta in enumerate(metadatas):
-            meta['text'] = documents[i]
-        self.upsert(embeddings, ids, metadatas)
+            meta_copy = meta.copy()
+            meta_copy['text'] = documents[i]
+            prepared_metadatas.append(meta_copy)
+        self.upsert(embeddings, ids, prepared_metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -259,8 +262,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
@@ -287,9 +288,6 @@ class FAISSVectorDB(VectorDB):
         """Search for similar vectors in FAISS"""
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
-        
-        import numpy as np
-        import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -331,9 +329,6 @@ class FAISSVectorDB(VectorDB):
         """Save FAISS index to disk"""
         if self.index is None:
             raise RuntimeError("No index to save")
-        
-        import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
