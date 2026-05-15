@@ -7,6 +7,7 @@ supporting Pinecone, Weaviate, and FAISS.
 
 import os
 import uuid
+import pickle
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -52,7 +53,6 @@ class VectorDB(ABC):
         metadatas: List[Dict[str, Any]]
     ) -> None:
         """Helper to add documents with automated ID generation"""
-        import uuid
         ids = [str(uuid.uuid4()) for _ in documents]
 
         # Add text to metadata
@@ -224,6 +224,16 @@ class FAISSVectorDB(VectorDB):
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
+
+                # Load metadata
+                metadata_path = self.index_path + ".metadata.pkl"
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'rb') as f:
+                        data = pickle.load(f)
+                        self.metadata_store = data.get('metadata_store', {})
+                        self.id_to_idx = data.get('id_to_idx', {})
+                        self.idx_to_id = data.get('idx_to_id', {})
+                    print(f"✅ Loaded metadata from: {metadata_path}")
             else:
                 print("⚠️  No existing FAISS index found")
         
@@ -257,11 +267,10 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
+        import faiss
         faiss.normalize_L2(vectors_np)
         
         start_idx = self.index.ntotal
@@ -286,13 +295,14 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # If filtering, we might need more candidates
+        fetch_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, fetch_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -302,12 +312,26 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Manual metadata filtering for FAISS
+                if filter_dict:
+                    match = True
+                    for key, val in filter_dict.items():
+                        if metadata.get(key) != val:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
@@ -331,8 +355,6 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
-        
         faiss.write_index(self.index, path)
         
         # Save metadata
