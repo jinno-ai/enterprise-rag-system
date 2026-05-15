@@ -190,7 +190,7 @@ class HybridRetriever:
                     document=r.text,
                     score=r.score,
                     metadata=r.metadata,
-                    source=r.metadata.get('source', 'unknown')
+                    source=r.source
                 )
                 for r in semantic_results
             ]
