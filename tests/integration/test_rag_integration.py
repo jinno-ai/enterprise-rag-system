@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -16,6 +17,34 @@ def temp_vector_db():
     with tempfile.TemporaryDirectory() as tmpdir:
         index_path = os.path.join(tmpdir, "test_index.bin")
         yield index_path
+
+
+@pytest.fixture(autouse=True)
+def mock_openai():
+    """Mock OpenAI API calls for integration tests to avoid 401 errors"""
+    with patch("openai.embeddings.create") as mock_embed, \
+         patch("openai.chat.completions.create") as mock_chat:
+
+        # Mock embedding response
+        def mock_embed_side_effect(model, input):
+            mock_resp = MagicMock()
+            # Generate dummy embeddings of correct dimension (1536 for ada-002)
+            embeddings = [[0.1] * 1536 for _ in (input if isinstance(input, list) else [input])]
+            mock_resp.data = [MagicMock(embedding=emb) for emb in embeddings]
+            return mock_resp
+
+        mock_embed.side_effect = mock_embed_side_effect
+
+        # Mock chat response
+        mock_chat_resp = MagicMock()
+        mock_chat_resp.choices = [
+            MagicMock(message=MagicMock(content="This is a mocked answer based on integration test context."),
+                      finish_reason="stop")
+        ]
+        mock_chat_resp.usage = MagicMock(total_tokens=50)
+        mock_chat.return_value = mock_chat_resp
+
+        yield
 
 
 @pytest.fixture
@@ -50,6 +79,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(
         vector_db=vector_db,
@@ -84,6 +114,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
@@ -116,6 +147,7 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
@@ -148,12 +180,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -177,6 +211,7 @@ def test_batch_query():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
 
@@ -197,6 +232,7 @@ def test_retrieval_with_filters():
     vector_db.connect()
 
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
@@ -224,7 +260,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -232,6 +268,7 @@ def test_confidence_calculation():
     vector_db = get_vector_db(db_type="faiss", index_path=":memory:")
     vector_db.connect()
     embedding_model = get_embedding_model()
+    vector_db.create_index(dimension=embedding_model.dimension)
 
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
     pipeline = RAGPipeline(retriever=retriever)
@@ -241,7 +278,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
