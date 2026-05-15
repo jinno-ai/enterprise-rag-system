@@ -26,6 +26,17 @@ class RAGResponse:
     tokens_used: int
     retrieval_results: List[RetrievalResult]
 
+    def __post_init__(self):
+        """Ensure latency and tokens are non-negative"""
+        if self.latency_ms < 0:
+            self.latency_ms = 0
+        if self.tokens_used < 0:
+            self.tokens_used = 0
+        if self.confidence < 0.0:
+            self.confidence = 0.0
+        elif self.confidence > 1.0:
+            self.confidence = 1.0
+
 
 class RAGPipeline:
     """Complete RAG pipeline orchestration"""

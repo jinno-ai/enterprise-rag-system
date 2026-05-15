@@ -8,6 +8,7 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -16,6 +17,34 @@ def temp_vector_db():
     with tempfile.TemporaryDirectory() as tmpdir:
         index_path = os.path.join(tmpdir, "test_index.bin")
         yield index_path
+
+
+@pytest.fixture(autouse=True)
+def mock_openai():
+    """Mock OpenAI API calls for integration tests to avoid 401 errors"""
+    with patch("openai.embeddings.create") as mock_embed, \
+         patch("openai.chat.completions.create") as mock_chat:
+
+        # Mock embedding response
+        def mock_embed_side_effect(model, input):
+            mock_resp = MagicMock()
+            # Generate dummy embeddings of correct dimension (1536 for ada-002)
+            embeddings = [[0.1] * 1536 for _ in (input if isinstance(input, list) else [input])]
+            mock_resp.data = [MagicMock(embedding=emb) for emb in embeddings]
+            return mock_resp
+
+        mock_embed.side_effect = mock_embed_side_effect
+
+        # Mock chat response
+        mock_chat_resp = MagicMock()
+        mock_chat_resp.choices = [
+            MagicMock(message=MagicMock(content="This is a mocked answer based on integration test context."),
+                      finish_reason="stop")
+        ]
+        mock_chat_resp.usage = MagicMock(total_tokens=50)
+        mock_chat.return_value = mock_chat_resp
+
+        yield
 
 
 @pytest.fixture
