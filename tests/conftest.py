@@ -7,7 +7,8 @@ def mock_openai_embeddings():
     with patch("app.core.embeddings.OpenAIEmbeddings") as mock:
         instance = mock.return_value
         instance.embed_query.side_effect = lambda x: [0.1] * 1536
-        instance.embed_documents.side_effect = lambda x: [[0.1] * 1536 for _ in x]
+        instance.embed_texts.side_effect = lambda x: [[0.1] * 1536 for _ in x]
+        instance.dimension = 1536
         yield mock
 
 @pytest.fixture(autouse=True)

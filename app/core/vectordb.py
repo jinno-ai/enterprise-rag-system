@@ -11,6 +11,7 @@ import numpy as np
 import os
 import uuid
 import pickle
+import faiss
 from dataclasses import dataclass
 
 
@@ -257,6 +258,10 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        if self.index is None and vectors:
+            dimension = len(vectors[0])
+            self.create_index(dimension)
+
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
