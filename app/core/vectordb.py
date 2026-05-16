@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import uuid
 from dataclasses import dataclass
 
 
@@ -62,6 +64,24 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: List[Dict[str, Any]]
+    ) -> None:
+        """Helper method to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Add text to metadata without mutating original metadatas
+        new_metadatas = []
+        for doc, meta in zip(documents, metadatas):
+            new_meta = meta.copy()
+            new_meta["text"] = doc
+            new_metadatas.append(new_meta)
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=new_metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -315,6 +335,9 @@ class FAISSVectorDB(VectorDB):
         import faiss
         import pickle
         
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
         faiss.write_index(self.index, path)
         
         # Save metadata
