@@ -78,6 +78,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
+    import uuid
 
     # Initialize
     vector_db = get_vector_db(db_type="faiss", index_path=temp_vector_db)
@@ -85,15 +86,20 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
     embedding_model = get_embedding_model()
 
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
+
     # Generate embeddings
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
 
-    # Test add documents
+    metadatas = [doc["metadata"].copy() for doc in sample_documents]
+
+    # Test add_documents
     vector_db.add_documents(
         documents=texts,
         embeddings=embeddings,
-        metadatas=[doc["metadata"] for doc in sample_documents]
+        metadatas=metadatas
     )
 
     # Test search
@@ -117,10 +123,15 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
 
     embedding_model = get_embedding_model()
 
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
+
     # Index documents
     texts = [doc["text"] for doc in sample_documents]
     embeddings = embedding_model.embed_texts(texts)
-    vector_db.add_documents(texts, embeddings, [doc["metadata"] for doc in sample_documents])
+    metadatas = [doc["metadata"].copy() for doc in sample_documents]
+
+    vector_db.add_documents(texts, embeddings, metadatas)
 
     # Test hybrid retrieval
     retriever = HybridRetriever(
@@ -128,6 +139,10 @@ def test_hybrid_retrieval(temp_vector_db, sample_documents):
         embedding_model=embedding_model,
         alpha=0.5
     )
+
+    from app.services.document_loader import Document
+    docs = [Document(content=doc["text"], metadata=doc["metadata"]) for doc in sample_documents]
+    retriever.build_bm25_index(docs)
 
     query = "What is deep learning?"
     results = retriever.retrieve(query, top_k=2, use_hybrid=True)
@@ -148,12 +163,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -198,6 +215,9 @@ def test_retrieval_with_filters():
 
     embedding_model = get_embedding_model()
 
+    if vector_db.index is None:
+        vector_db.create_index(dimension=embedding_model.dimension)
+
     # Index documents with metadata
     documents = ["Doc 1", "Doc 2", "Doc 3"]
     embeddings = embedding_model.embed_texts(documents)
@@ -224,7 +244,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
@@ -241,7 +261,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
