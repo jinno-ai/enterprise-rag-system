@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     app_name: str = "Enterprise RAG System"
     app_version: str = "0.1.0"
     debug: bool = Field(False, env="DEBUG")
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
