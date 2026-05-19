@@ -7,8 +7,10 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-import numpy as np
+import uuid
 from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass
@@ -22,6 +24,24 @@ class SearchResult:
 
 class VectorDB(ABC):
     """Abstract base class for vector database operations"""
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Helper method to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        # Ensure text is in metadata for retrieval
+        for i, meta in enumerate(metadatas):
+            meta['text'] = documents[i]
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
     
     @abstractmethod
     def connect(self) -> None:
@@ -202,6 +222,7 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import os
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -237,13 +258,16 @@ class FAISSVectorDB(VectorDB):
     ) -> None:
         """Insert or update vectors in FAISS"""
         if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
-        import numpy as np
+            if vectors:
+                dimension = len(vectors[0])
+                self.create_index(dimension=dimension)
+            else:
+                return
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
+        import faiss
         faiss.normalize_L2(vectors_np)
         
         start_idx = self.index.ntotal
@@ -268,7 +292,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
