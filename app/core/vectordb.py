@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import os
+import uuid
+import pickle
 import numpy as np
 from dataclasses import dataclass
 
@@ -72,8 +74,6 @@ class VectorDB(ABC):
         ids: Optional[List[str]] = None
     ) -> None:
         """Helper to add documents with auto-generated IDs"""
-        import uuid
-
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in range(len(documents))]
 
@@ -264,7 +264,6 @@ class FAISSVectorDB(VectorDB):
             else:
                 raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
-        import numpy as np
         import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
@@ -294,7 +293,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
@@ -356,7 +354,6 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
