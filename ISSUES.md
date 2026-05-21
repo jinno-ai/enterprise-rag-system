@@ -75,3 +75,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Cross-Encoder によるリランキング機能の実装
+
+**タイトル:** 「Phase 1.2」Cross-Encoder によるリランキング（Re-ranking）機能の実装
+
+**内容:**
+現在、`HybridRetriever` はベクトルのコサイン類似度と BM25 スコアを RRF で統合していますが、最終的な回答生成に使用するコンテキストの品質をさらに向上させるため、Cross-Encoder（Cohere Rerank v3 や BGE-reranker-large 等）によるリランキング機能を導入する必要があります。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` の `ContextCompressor._rerank_and_truncate` を実装する
+- [ ] リランキングモデル（Cohere, HuggingFace等）を選択できるファクトリ関数を実装する
+- [ ] `RAGPipeline` の設定に `use_reranking` オプションを追加する
