@@ -7,6 +7,10 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+import os
+import uuid
+import pickle
+import faiss
 import numpy as np
 from dataclasses import dataclass
 
@@ -18,6 +22,7 @@ class SearchResult:
     score: float
     metadata: Dict[str, Any]
     text: str
+    source: str
 
 
 class VectorDB(ABC):
@@ -62,6 +67,23 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in documents]
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        # Inject text into metadata for HybridRetriever compatibility
+        for doc, meta in zip(documents, metadatas):
+            meta["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -162,7 +184,8 @@ class PineconeVectorDB(VectorDB):
                 id=match.id,
                 score=match.score,
                 metadata=match.metadata,
-                text=match.metadata.get("text", "")
+                text=match.metadata.get("text", ""),
+                source=match.metadata.get("source", "unknown")
             ))
         
         return search_results
@@ -201,8 +224,6 @@ class FAISSVectorDB(VectorDB):
     def connect(self) -> None:
         """Load FAISS index from disk"""
         try:
-            import faiss
-            
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
@@ -215,8 +236,6 @@ class FAISSVectorDB(VectorDB):
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
         try:
-            import faiss
-            
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
             elif metric == "euclidean":
@@ -236,8 +255,14 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+
         if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
+            # Initialize index if it doesn't exist
+            if vectors:
+                dimension = len(vectors[0])
+                self.create_index(dimension)
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         import numpy as np
         
@@ -269,12 +294,13 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("Index not created. Call create_index() first.")
         
         import numpy as np
-        import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # Increase top_k for filtering if filter_dict is provided
+        search_k = top_k * 5 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, search_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +310,27 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply simple metadata filtering
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
-                    text=metadata.get("text", "")
+                    text=metadata.get("text", ""),
+                    source=metadata.get("source", "unknown")
                 ))
+
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
@@ -311,9 +352,6 @@ class FAISSVectorDB(VectorDB):
         """Save FAISS index to disk"""
         if self.index is None:
             raise RuntimeError("No index to save")
-        
-        import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
