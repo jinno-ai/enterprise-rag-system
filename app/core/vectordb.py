@@ -8,6 +8,10 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import uuid
+import pickle
+import faiss
 from dataclasses import dataclass
 
 
@@ -62,6 +66,24 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """ Helper method to add documents with auto-generated IDs """
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        # Ensure text is in metadata for retrieval
+        for i, doc in enumerate(documents):
+            metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,6 +258,10 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        if self.index is None and vectors:
+            dimension = len(vectors[0])
+            self.create_index(dimension)
+
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
@@ -313,7 +339,6 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
