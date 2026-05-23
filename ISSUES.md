@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Integration of Functional Document Ingestion API
+
+**タイトル:** ドキュメント取り込みAPIの実装統合と有効化
+
+**内容:**
+現在、`app/api/routes/ingest.py` にはモックの実装しか含まれていません。一方で、`app/api/routes/documents.py` には `pypdf` を用いた PDF 読み込みや `FAISS` へのアップサートを含む機能的な実装が記述されていますが、`app/main.py` でロードされておらず、利用不可能な状態です。
+
+**タスク:**
+- [ ] `app/api/routes/ingest.py` のモック実装を廃止し、`app/api/routes/documents.py` の機能を統合する。
+- [ ] `app/main.py` にて `documents.router` を適切にインクルードし、エンドポイントを公開する。
+- [ ] アップロードされたファイルの一時保存先のクリーンアップ処理を確実に行う。
+- [ ] インデックスの保存パス（`./data/faiss_index.bin`）を `config.py` 経由で管理するように修正する。
