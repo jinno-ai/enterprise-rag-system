@@ -6,6 +6,12 @@ supporting Pinecone, Weaviate, and FAISS.
 """
 
 import os
+import uuid
+import pickle
+try:
+    import faiss
+except ImportError:
+    faiss = None
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -72,16 +78,18 @@ class VectorDB(ABC):
         ids: Optional[List[str]] = None
     ) -> None:
         """Helper to add documents with auto-generated IDs if not provided"""
-        import uuid
-
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in range(len(documents))]
 
         # Inject text into metadata for FAISS consistency
+        prepared_metadatas = []
         for doc, meta in zip(documents, metadatas):
-            meta["text"] = doc
+            # Use copy to avoid in-place modification of input metadatas
+            meta_copy = meta.copy()
+            meta_copy["text"] = doc
+            prepared_metadatas.append(meta_copy)
 
-        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        self.upsert(vectors=embeddings, ids=ids, metadata=prepared_metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -221,7 +229,8 @@ class FAISSVectorDB(VectorDB):
     def connect(self) -> None:
         """Load FAISS index from disk"""
         try:
-            import faiss
+            if faiss is None:
+                raise ImportError("faiss not installed")
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -235,7 +244,8 @@ class FAISSVectorDB(VectorDB):
     def create_index(self, dimension: int, metric: str = "cosine") -> None:
         """Create a new FAISS index"""
         try:
-            import faiss
+            if faiss is None:
+                raise ImportError("faiss not installed")
             
             if metric == "cosine":
                 self.index = faiss.IndexFlatIP(dimension)  # Inner product for cosine
@@ -256,7 +266,8 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        import faiss
+        if faiss is None:
+            raise ImportError("faiss not installed")
 
         if self.index is None and vectors:
             self.create_index(dimension=len(vectors[0]))
@@ -293,8 +304,10 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
+        if faiss is None:
+            raise ImportError("faiss not installed")
+
         import numpy as np
-        import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
@@ -337,7 +350,9 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("No index to save")
         
-        import faiss
+        if faiss is None:
+            raise ImportError("faiss not installed")
+
         import pickle
         
         faiss.write_index(self.index, path)
