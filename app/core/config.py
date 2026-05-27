@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     # API Keys
-    openai_api_key: str = Field(default="sk-dummy")
+    openai_api_key: str = Field(...)
     anthropic_api_key: Optional[str] = Field(None)
     cohere_api_key: Optional[str] = Field(None)
     
