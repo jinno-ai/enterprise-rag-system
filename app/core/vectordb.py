@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import uuid
 from dataclasses import dataclass
 
 
@@ -62,6 +64,34 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """
+        Helper method to add documents to the vector database.
+
+        Args:
+            documents: List of document strings
+            embeddings: List of embedding vectors
+            metadatas: Optional list of metadata dictionaries
+        """
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+        else:
+            # Copy to avoid modifying the input list
+            metadatas = [m.copy() for m in metadatas]
+
+        # Ensure the text is stored in metadata for retrieval
+        for i, doc_text in enumerate(documents):
+            metadatas[i]["text"] = doc_text
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,10 +266,14 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
+        import faiss
         
-        import numpy as np
+        if self.index is None:
+            # Auto-initialize index with the dimension of the first vector
+            if vectors:
+                self.create_index(dimension=len(vectors[0]))
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
