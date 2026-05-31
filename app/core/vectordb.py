@@ -63,6 +63,28 @@ class VectorDB(ABC):
         """Get database statistics"""
         pass
 
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Helper method to add documents with IDs"""
+        if metadatas and len(metadatas) != len(documents):
+            raise ValueError("Length of metadatas must match length of documents")
+
+        import uuid
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Ensure metadata includes the text content
+        prepared_metadatas = []
+        for i, doc in enumerate(documents):
+            meta = metadatas[i].copy() if metadatas else {}
+            meta['text'] = doc
+            prepared_metadatas.append(meta)
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=prepared_metadatas)
+
 
 class PineconeVectorDB(VectorDB):
     """Pinecone vector database implementation"""
