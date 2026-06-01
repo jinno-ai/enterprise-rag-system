@@ -10,8 +10,6 @@ import pickle
 import uuid
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-import numpy as np
-import faiss
 from dataclasses import dataclass
 
 
@@ -261,6 +259,9 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
+        import numpy as np
+        import faiss
+
         if self.index is None:
             # Auto-initialize index with dimension of first vector
             if vectors:
@@ -292,9 +293,12 @@ class FAISSVectorDB(VectorDB):
         filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         """Search for similar vectors in FAISS"""
+        import numpy as np
+        import faiss
+
         if self.index is None or self.index.ntotal == 0:
             return []
-        
+
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
