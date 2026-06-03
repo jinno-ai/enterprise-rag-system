@@ -8,6 +8,8 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import os
+import uuid
 from dataclasses import dataclass
 
 
@@ -62,6 +64,41 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """
+        Helper method to add documents with auto-generated IDs
+
+        Args:
+            documents: List of document texts
+            embeddings: List of embedding vectors
+            metadatas: Optional list of metadata dictionaries
+
+        Returns:
+            List of generated document IDs
+        """
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        if len(metadatas) != len(documents):
+            raise ValueError("Number of metadatas must match number of documents")
+
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Ensure text is in metadata for retrieval
+        for i, doc_text in enumerate(documents):
+            metadatas[i] = metadatas[i].copy()
+            metadatas[i]["text"] = doc_text
+            if "source" not in metadatas[i]:
+                metadatas[i]["source"] = "unknown"
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -203,7 +240,7 @@ class FAISSVectorDB(VectorDB):
         try:
             import faiss
             
-            if self.index_path and os.path.exists(self.index_path):
+            if self.index_path and self.index_path != ":memory:" and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
                 print(f"✅ Loaded FAISS index from: {self.index_path}")
             else:
@@ -236,10 +273,12 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
         import numpy as np
+        import faiss
+
+        if self.index is None:
+            dimension = len(vectors[0])
+            self.create_index(dimension)
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
