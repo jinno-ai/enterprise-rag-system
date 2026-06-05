@@ -75,3 +75,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: SSE (Server-Sent Events) によるストリーミング回答のAPI実装
+
+**タイトル:** `StreamingRAGPipeline` の統合とSSEエンドポイントの追加
+
+**内容:**
+現在、`app/services/rag_pipeline.py` には `StreamingRAGPipeline` が実装されていますが、これを外部から利用するためのAPIエンドポイントおよびUIの連携が未実装です。LLMの回答を逐次表示することで、ユーザーの体感待ち時間を短縮し、UXを向上させる必要があります。
+
+**タスク:**
+- [ ] `app/api/routes/query.py` に SSE 形式で回答をストリーミングする新しいエンドポイント（例: `/stream`）を追加する。
+- [ ] ストリーミングエンドポイントで `StreamingRAGPipeline.stream_query` を適切に呼び出す。
+- [ ] フロントエンド（Streamlit UI等）で SSE を受信し、回答をリアルタイムに描画するように修正する。
