@@ -9,6 +9,8 @@ from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
 import os
+import uuid
+import pickle
 from dataclasses import dataclass
 
 
@@ -78,8 +80,6 @@ class VectorDB(ABC):
             embeddings: List of document embeddings
             metadatas: Optional list of metadata dictionaries
         """
-        import uuid
-
         ids = [str(uuid.uuid4()) for _ in documents]
 
         if metadatas is None:
@@ -272,8 +272,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
-        
         vectors_np = np.array(vectors, dtype=np.float32)
         
         # Normalize vectors for cosine similarity
@@ -301,7 +299,6 @@ class FAISSVectorDB(VectorDB):
         if self.index is None:
             raise RuntimeError("Index not created. Call create_index() first.")
         
-        import numpy as np
         import faiss
         
         query_np = np.array([query_vector], dtype=np.float32)
@@ -362,7 +359,6 @@ class FAISSVectorDB(VectorDB):
             raise RuntimeError("No index to save")
         
         import faiss
-        import pickle
         
         faiss.write_index(self.index, path)
         
