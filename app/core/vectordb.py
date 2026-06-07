@@ -5,6 +5,9 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import uuid
+import pickle
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
@@ -22,7 +25,25 @@ class SearchResult:
 
 class VectorDB(ABC):
     """Abstract base class for vector database operations"""
-    
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """ Helper method to add documents to the vector database. """
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+        if metadatas is None:
+            metadatas = [{} for _ in range(len(documents))]
+
+        # Ensure text is in metadata for retrieval
+        for i, doc in enumerate(documents):
+            metadatas[i]['text'] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
+
     @abstractmethod
     def connect(self) -> None:
         """Connect to vector database"""
@@ -236,10 +257,14 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
         import numpy as np
+        import faiss
+
+        if self.index is None:
+            if not vectors:
+                return
+            dimension = len(vectors[0])
+            self.create_index(dimension=dimension)
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -311,10 +336,9 @@ class FAISSVectorDB(VectorDB):
         """Save FAISS index to disk"""
         if self.index is None:
             raise RuntimeError("No index to save")
-        
+
         import faiss
-        import pickle
-        
+
         faiss.write_index(self.index, path)
         
         # Save metadata
