@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: クロスエンコーダーによるリランク機能の実装
+
+**タイトル:** 検索精度の向上のためのクロスエンコーダー・リランク機能の実装
+
+**内容:**
+現在、`HybridRetriever` はセマンティック検索とキーワード検索を RRF (Reciprocal Rank Fusion) で統合していますが、最終的な検索結果の精度をさらに向上させるために、クロスエンコーダーを用いたリランク（再順位付け）処理が必要です。`app/services/retrieval.py` の `ContextCompressor._rerank_and_truncate` メソッドにプレースホルダーが残っています。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` の `ContextCompressor` クラスにリランク用のロジックを実装する
+- [ ] Cohere Rerank API またはオープンソースの Cross-Encoder (BGE-reranker 等) を統合する
+- [ ] リランクを有効にするための設定を `app/core/config.py` に追加する
+- [ ] リランク後の検索結果の精度評価を行うテストを作成する
