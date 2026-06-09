@@ -5,9 +5,11 @@ This module provides a unified interface for vector database operations,
 supporting Pinecone, Weaviate, and FAISS.
 """
 
+import os
+import pickle
+import uuid
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-import numpy as np
 from dataclasses import dataclass
 
 
@@ -62,6 +64,27 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """Helper to add documents with auto-generated IDs"""
+        ids = [str(uuid.uuid4()) for _ in range(len(documents))]
+
+        # Ensure 'text' is in metadata
+        if metadatas is None:
+            metadatas = [{"text": doc} for doc in documents]
+        else:
+            # Create copies to avoid in-place modification of input dictionaries
+            metadatas = [m.copy() for m in metadatas]
+            for i, doc in enumerate(documents):
+                if "text" not in metadatas[i]:
+                    metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,10 +259,15 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
         import numpy as np
+        import faiss
+
+        if self.index is None:
+            # Auto-initialize index with dimension of first vector
+            if vectors:
+                self.create_index(dimension=len(vectors[0]))
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -265,16 +293,20 @@ class FAISSVectorDB(VectorDB):
         filter_dict: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         """Search for similar vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
         import numpy as np
         import faiss
-        
+
+        if self.index is None or self.index.ntotal == 0:
+            return []
+
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        k = top_k if not filter_dict else self.index.ntotal
+        if k <= 0:
+            return []
+
+        distances, indices = self.index.search(query_np, k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,14 +316,28 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filters
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                if not filter_dict and len(search_results) >= top_k:
+                    break
         
-        return search_results
+        return search_results[:top_k]
     
     def delete(self, ids: List[str]) -> None:
         """Delete vectors from FAISS (not directly supported, requires rebuild)"""
