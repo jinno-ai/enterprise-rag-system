@@ -75,3 +75,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入による検索精度の向上
+
+**タイトル:** 日本語形態素解析の導入による検索精度の向上
+
+**内容:**
+現在、`HybridRetriever.build_bm25_index` における日本語のトークナイズは単純な正規表現で行われており、検索精度に限界があります。MeCabやspaCy（Sudachi等）といった形態素解析器を導入することで、より精度の高いキーワード検索を実現する必要があります。
+
+**タスク:**
+- [ ] `MeCab` または `spaCy` (ja_core_news_*) を依存関係に追加する
+- [ ] `app/services/retrieval.py` の `build_bm25_index` 内のトークナイズ処理を形態素解析器を使用するように変更する
+- [ ] `HybridRetriever.keyword_search` 内のクエリトークナイズ処理も同様に変更する
+- [ ] 日本語特有のストップワード除去機能を実装する
