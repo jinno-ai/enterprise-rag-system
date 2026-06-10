@@ -8,6 +8,7 @@ supporting Pinecone, Weaviate, and FAISS.
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 import numpy as np
+import uuid
 from dataclasses import dataclass
 
 
@@ -62,6 +63,40 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        ids: Optional[List[str]] = None
+    ) -> List[str]:
+        """
+        Helper method to add documents with auto-generated IDs
+
+        Args:
+            documents: List of document strings
+            embeddings: List of embedding vectors
+            metadatas: Optional list of metadata dictionaries
+            ids: Optional list of document IDs
+
+        Returns:
+            List of document IDs
+        """
+        if ids is None:
+            ids = [str(uuid.uuid4()) for _ in documents]
+
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        # Ensure text is in metadata for retrieval
+        for i, doc in enumerate(documents):
+            # Create a copy to avoid modifying the original metadata
+            metadatas[i] = metadatas[i].copy()
+            metadatas[i]["text"] = doc
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=metadatas)
+        return ids
 
 
 class PineconeVectorDB(VectorDB):
@@ -202,6 +237,7 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import os
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
@@ -237,9 +273,14 @@ class FAISSVectorDB(VectorDB):
     ) -> None:
         """Insert or update vectors in FAISS"""
         if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
+            # Auto-initialize if dimension can be inferred
+            if vectors:
+                self.create_index(dimension=len(vectors[0]))
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         import numpy as np
+        import faiss
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -314,6 +355,7 @@ class FAISSVectorDB(VectorDB):
         
         import faiss
         import pickle
+        import os
         
         faiss.write_index(self.index, path)
         
