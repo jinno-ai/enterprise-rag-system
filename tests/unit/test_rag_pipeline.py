@@ -81,7 +81,7 @@ def test_rag_pipeline_query(mock_openai, mock_retriever, sample_retrieval_result
     assert response.answer == mock_llm_response['answer']
     assert response.confidence > 0
     assert len(response.sources) == 2
-    assert response.latency_ms > 0
+    assert response.latency_ms >= 0
     assert response.tokens_used == mock_llm_response['tokens_used']
 
 

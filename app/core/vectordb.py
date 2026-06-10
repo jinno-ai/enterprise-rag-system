@@ -1,3 +1,4 @@
+import os
 """
 Vector Database Connection and Operations
 
