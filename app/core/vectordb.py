@@ -160,7 +160,7 @@ class PineconeVectorDB(VectorDB):
         for match in results.matches:
             search_results.append(SearchResult(
                 id=match.id,
-                score=match.score,
+                score=float(match.score),
                 metadata=match.metadata,
                 text=match.metadata.get("text", "")
             ))
@@ -202,6 +202,7 @@ class FAISSVectorDB(VectorDB):
         """Load FAISS index from disk"""
         try:
             import faiss
+            import os
             
             if self.index_path and os.path.exists(self.index_path):
                 self.index = faiss.read_index(self.index_path)
