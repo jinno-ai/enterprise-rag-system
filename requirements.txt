@@ -30,6 +30,9 @@ pandoc==2.3
 # Embeddings & Search
 sentence-transformers==2.2.2
 rank-bm25==0.2.2
+# faiss-cpu 1.7.4 is built against the NumPy 1.x ABI; NumPy 2.x breaks it at import
+# time (`_ARRAY_API not found`). Pin below 2.0 until faiss-cpu is upgraded.
+numpy>=1.24,<2
 
 # Web Framework
 fastapi==0.109.0

@@ -4,6 +4,9 @@ __pycache__/
 
 # Environment
 .env
+.venv/
+venv/
+.python-version
 
 # Models
 *.pt
@@ -26,3 +29,5 @@ worktrees/
 
 # Test coverage artifacts
 .coverage
+htmlcov/
+.pytest_cache/

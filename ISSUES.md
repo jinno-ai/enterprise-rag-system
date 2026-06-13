@@ -2,6 +2,18 @@
 
 以下の改善提案をGitHub Issueとして登録することを推奨します。
 
+> **✅ ステータス (2026-06-13 時点): Issue 1〜5 はすべて実装済み（E-01 完了）。**
+> 本ドキュメントは記録として残します。検証結果の要約:
+> - **Issue 1 (テスト/CI):** ユニットテスト 278 本がグリーン。CI を実ゲート化
+>   （`continue-on-error` 撤廃、`requirements-test.txt` 導入、unit を必須ジョブ化、
+>   integration は外部依存のため情報ジョブ化）。→ `.github/workflows/test.yml`
+> - **Issue 2 (構造化ロギング):** `app/core/logging_config.py` を導入、`print` は廃止済み。
+> - **Issue 3 (AsyncIO):** `AsyncOpenAI` 採用、`RAGPipeline` は `async`、ルートは `await`。
+> - **Issue 4 (セキュリティ/構成):** CORS は `settings.ALLOWED_ORIGINS`、パス等は環境変数化。
+> - **Issue 5 (DI):** グローバル変数を廃止し、`app.state` + `Depends(get_rag_pipeline)` に移行。
+>
+> 備考: `requirements.txt` の NumPy を `>=1.24,<2` に固定（faiss-cpu 1.7.4 の ABI 対応）。
+
 ---
 
 ## Issue 1: テスト戦略の確立と実装

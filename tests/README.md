@@ -20,7 +20,12 @@ tests/
 
 Before running tests, ensure you have:
 
-1. Installed dependencies:
+1. Installed dependencies. For the unit suite, the lightweight, verified set is
+   enough (heavy ML libs are mocked) and is what CI uses:
+```bash
+pip install -r requirements-test.txt
+```
+   For integration tests against real providers, install the full set:
 ```bash
 pip install -r requirements.txt
 ```
@@ -32,7 +37,9 @@ export LLM_MODEL="gpt-4"
 export EMBEDDING_MODEL="text-embedding-ada-002"
 ```
 
-**Note**: Tests use a mock configuration, so you don't need real API keys for unit tests.
+**Note**: Unit tests use a mock configuration, so you don't need real API keys.
+Integration tests that call external providers are **automatically skipped**
+unless `OPENAI_API_KEY` is set to a real key (starting with `sk-`).
 
 ## Running Tests
 
@@ -219,14 +226,20 @@ pytest tests/ -v
 
 ## Continuous Integration
 
-These tests are designed to run in CI/CD pipelines:
+Tests run in GitHub Actions (`.github/workflows/test.yml`):
+
+- **`unit-tests`** — blocking gate. Runs `pytest tests/unit` with coverage on
+  Python 3.10 and 3.11 using `requirements-test.txt`. A failure fails the build.
+- **`integration-tests`** — informational (`continue-on-error: true`). Runs
+  `pytest tests/integration`; provider-dependent tests skip unless the
+  `OPENAI_API_KEY` secret is configured.
 
 ```yaml
-# Example GitHub Actions workflow
-- name: Run tests
-  run: |
-    pip install -r requirements.txt
-    pytest tests/unit/ -v --tb=short
+# Blocking unit-test gate (excerpt)
+- name: Install test dependencies
+  run: pip install -r requirements-test.txt
+- name: Run unit tests
+  run: pytest tests/unit -v --cov=app --cov-report=term-missing
 ```
 
 ## Test Coverage

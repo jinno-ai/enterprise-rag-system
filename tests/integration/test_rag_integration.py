@@ -11,6 +11,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
+# Tests that hit the real embedding/LLM provider are skipped unless a real
+# OpenAI API key is configured. The placeholder key used in conftest.py
+# ("test-key-for-testing") does not start with "sk-".
+REAL_OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").startswith("sk-")
+requires_openai = pytest.mark.skipif(
+    not REAL_OPENAI_KEY,
+    reason="requires a real OPENAI_API_KEY (external service)",
+)
+
+
 @pytest.fixture
 def temp_vector_db():
     """Create temporary vector database"""
@@ -76,6 +86,7 @@ def test_rag_pipeline_end_to_end(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
+@requires_openai
 def test_vector_db_operations(temp_vector_db, sample_documents):
     """Test vector database operations"""
     from app.core.vectordb import get_vector_db
@@ -108,6 +119,7 @@ def test_vector_db_operations(temp_vector_db, sample_documents):
 
 
 @pytest.mark.integration
+@requires_openai
 def test_hybrid_retrieval(temp_vector_db, sample_documents):
     """Test hybrid retrieval (semantic + keyword)"""
     from app.core.vectordb import get_vector_db
@@ -152,12 +164,14 @@ def test_context_compression():
         RetrievalResult(
             document="This is a very long document that contains a lot of information about machine learning and artificial intelligence. " * 20,
             score=0.9,
-            metadata={"source": "long_doc.pdf"}
+            metadata={"source": "long_doc.pdf"},
+            source="long_doc.pdf"
         ),
         RetrievalResult(
             document="Short document.",
             score=0.8,
-            metadata={"source": "short_doc.pdf"}
+            metadata={"source": "short_doc.pdf"},
+            source="short_doc.pdf"
         )
     ]
 
@@ -169,7 +183,8 @@ def test_context_compression():
 
 
 @pytest.mark.integration
-def test_batch_query():
+@requires_openai
+async def test_batch_query():
     """Test batch query processing"""
     from app.services.rag_pipeline import RAGPipeline
     from app.services.retrieval import HybridRetriever
@@ -182,16 +197,17 @@ def test_batch_query():
 
     embedding_model = get_embedding_model()
     retriever = HybridRetriever(vector_db=vector_db, embedding_model=embedding_model)
-    pipeline = RAGPipeline(retriever=retriever)
+    pipeline = RAGPipeline(retriever=retriever, llm_client=AsyncMock())
 
-    # Batch query
+    # Batch query (batch_query is async)
     questions = ["Question 1?", "Question 2?", "Question 3?"]
-    responses = pipeline.batch_query(questions)
+    responses = await pipeline.batch_query(questions)
 
     assert len(responses) == len(questions)
 
 
 @pytest.mark.integration
+@requires_openai
 def test_retrieval_with_filters():
     """Test retrieval with metadata filters"""
     from app.core.vectordb import get_vector_db
@@ -248,7 +264,8 @@ def test_confidence_calculation():
         RetrievalResult(
             document="Relevant document",
             score=0.9,
-            metadata={"source": "doc1.pdf"}
+            metadata={"source": "doc1.pdf"},
+            source="doc1.pdf"
         )
     ]
 
