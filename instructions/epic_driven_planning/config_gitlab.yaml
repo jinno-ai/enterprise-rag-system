@@ -1,0 +1,32 @@
+# Epic-Driven Planning - GitLab設定
+# AUTO-GENERATED from PROJECT_REGISTRY - DO NOT EDIT MANUALLY
+project:
+  name: "enterprise-rag-system"
+  provider: "gitlab"
+
+  gitlab:
+    host: "https://gitlab.com"
+    project_id: "jinno-ai/enterprise-rag-system"
+    group_id: "jinno-ai"
+    # token は環境変数 GITLAB_TOKEN から取得
+
+  output_dir: "output"
+  charter_path: "output/charter.yml"
+
+  context: |
+    Enterprise RAG System - 社内ドキュメント検索基盤
+
+llm:
+  provider: "template"
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
+
+sync:
+  enabled: true
+  create_missing: true
+  update_existing: true
+  dry_run: false
+
+decomposition:
+  input_file: "output/decomposition.json"
+  output_dir: "output"

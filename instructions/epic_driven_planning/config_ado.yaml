@@ -1,0 +1,34 @@
+# Epic-Driven Planning - Azure DevOps設定
+# AUTO-GENERATED from PROJECT_REGISTRY - DO NOT EDIT MANUALLY
+project:
+  name: "enterprise-rag-system"
+  provider: "azure_devops"
+
+  azure_devops:
+    organization: "jin5770808"
+    project: "tokyo-career-up"
+    team: ""
+    area_path: ""
+    iteration_path: ""
+    # pat は環境変数 AZURE_DEVOPS_PAT から取得
+
+  output_dir: "output"
+  charter_path: "output/charter.yml"
+
+  context: |
+    Enterprise RAG System - 社内ドキュメント検索基盤
+
+llm:
+  provider: "template"
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
+
+sync:
+  enabled: true
+  create_missing: true
+  update_existing: true
+  dry_run: false
+
+decomposition:
+  input_file: "output/decomposition.json"
+  output_dir: "output"

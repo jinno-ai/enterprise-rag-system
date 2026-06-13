@@ -1,0 +1,310 @@
+# Epic-Driven Planning 設定テンプレート
+# このファイルをコピーしてプロジェクト固有の設定を記入してください
+#
+# ==========================================
+# 推奨: PROJECT_REGISTRY を使う方法
+# ==========================================
+# 登録済みプロジェクトなら設定ファイル不要:
+#   python project_sync.py --project enterprise-rag-system -d decomposition.json --all-providers
+#
+# 新規プロジェクト追加は project_sync.py の PROJECT_REGISTRY を編集
+#
+# 登録済みプロジェクト:
+#   - enterprise-rag-system: GitHub/GitLab/Azure DevOps 対応済み
+#   - ai-hub: GitHub/GitLab/Azure DevOps 対応済み
+#   - realtime-edge-detection: GitHub/GitLab/Azure DevOps 対応済み
+#   - llm-agent-framework: GitHub/GitLab/Azure DevOps 対応済み
+#
+# ==========================================
+# 従来方式: 設定ファイルを使う
+# ==========================================
+# 関連インストラクション（指示書との統合）:
+#   - 汎用: hub/instructions/epic_driven_planning.md
+#   - ADO Epic: software-development-phases/01-planning-requirements/02_epic/ado_epic_create.md
+#   - ADO Feature: software-development-phases/01-planning-requirements/03_feature/ado_feature_create.md
+#   - ADO Story: software-development-phases/01-planning-requirements/04_story/ado_story_create.md
+#   - ADO Task: software-development-phases/01-planning-requirements/05_task/ado_task_create.md
+#
+# キー仕様: docs/KEY_SPEC.md
+
+# =============================================================================
+# プロジェクト基本情報
+# =============================================================================
+project:
+  # プロジェクト名（表示用）
+  name: "my-project"
+
+  # プロバイダー選択: "github" | "azure_devops" | "gitlab"
+  provider: "github"
+
+  # GitHub設定（provider: "github" の場合）
+  github:
+    owner: "nobu007"              # ← 実際のユーザー名に変更
+    repo: "your-repo-name"
+    project_number: 2             # GitHub Projects V2の番号
+
+  # Azure DevOps設定（provider: "azure_devops" の場合）
+  azure_devops:
+    organization: "jin5770808"    # ← 実際の組織名に変更
+    project: "tokyo-career-up"    # ← 実際のプロジェクト名に変更（ハイフン）
+    team: ""                      # オプション: チーム名
+    area_path: ""                 # オプション: エリアパス
+    iteration_path: ""            # オプション: イテレーションパス
+    # pat: ""                     # PAT（環境変数AZURE_DEVOPS_PATを推奨）
+
+  # GitLab設定（provider: "gitlab" の場合）
+  gitlab:
+    host: "https://gitlab.com"
+    project_id: "jinno-ai/your-project"  # ← 実際のプロジェクトパスに変更
+    group_id: ""                  # オプション: Epic用グループID（Premium機能）
+    # token: ""                   # アクセストークン（環境変数GITLAB_TOKENを推奨）
+
+  # 出力先ディレクトリ（リポジトリルートからの相対パス）
+  output_dir: ".concept"
+
+  # charter.yml との統合
+  charter_path: ".concept/charter.yml"
+
+  # プロジェクトの技術コンテキスト（LLM分解で使用）
+  context: |
+    プロジェクトの技術スタック、主要コンポーネント、現在の状態を記述
+
+# =============================================================================
+# LLM設定（Epic分解で使用）
+# =============================================================================
+llm:
+  # プロバイダー: "claude" | "openai" | "ollama" | "template"
+  #
+  # ⚠️ 重要: "template" はテスト用のみ。本番では必ず "claude" を使用
+  #
+  # "template" の問題:
+  #   - 「設計→実装→テスト」の機械的分解になる
+  #   - 技術的具体性がない（例: 「機能Aの設計」）
+  #   - 受け入れ条件が曖昧（例: 「〜できること」）
+  #
+  # "claude" の利点:
+  #   - プロジェクト固有の技術課題を分析
+  #   - 具体的なFeature/Story名（例: 「TensorRT推論ランタイム」）
+  #   - 測定可能な受け入れ条件（例: 「FP16推論8ms以下」）
+  #
+  provider: "claude"  # 本番推奨
+  model: "claude-sonnet-4-20250514"
+  temperature: 0.3
+
+  # claude code CLI を使用する場合（APIキー不要）
+  # provider: "claude_code"
+  # command: "claude"  # claude code のパス
+
+# =============================================================================
+# スケジュール設定
+# =============================================================================
+schedule:
+  # プロジェクト開始日（YYYY-MM-DD形式）
+  start_date: "2026-01-27"
+
+  # 1日の作業時間（時間）
+  hours_per_day: 8
+
+  # 稼働日（0=月曜, 6=日曜）
+  working_days: [0, 1, 2, 3, 4]  # 月-金
+
+  # 祝日・休日リスト（YYYY-MM-DD形式）
+  holidays: []
+  # holidays:
+  #   - "2026-02-11"  # 建国記念の日
+  #   - "2026-02-23"  # 天皇誕生日
+
+# =============================================================================
+# Epic定義
+# =============================================================================
+epic:
+  # Epicのゴール（ビジネス価値中心で記述）
+  goal: |
+    [対象ユーザー]に[価値]を提供し、[測定可能な成果]を達成する
+
+  # 背景・課題
+  background: |
+    現状の課題を2-3行で記述
+
+  # 成功指標
+  success_metrics:
+    - metric: "主要KPI名"
+      target: "目標値"
+      current: "現在値（オプション）"
+    # - metric: "レイテンシ"
+    #   target: "P95 3秒以内"
+
+  # スコープ
+  scope:
+    in_scope:
+      - "含める機能/範囲1"
+      - "含める機能/範囲2"
+    out_of_scope:
+      - "含めない機能/範囲1"
+      - "含めない機能/範囲2"
+
+  # 前提条件・制約
+  constraints:
+    technical:
+      - "技術的前提1"
+    resource:
+      - "リソース制約1"
+    timeline:
+      - "期間制約1"
+
+# =============================================================================
+# ステークホルダー
+# =============================================================================
+stakeholders:
+  epic_owner: "担当者名"
+  technical_lead: "技術リード名"
+  related_teams:
+    - "関連チーム1"
+
+# =============================================================================
+# 分解設定（Epic → Feature → Story）
+# =============================================================================
+decomposition:
+  # Feature数の目安
+  target_features: 3-5
+
+  # 1 Feature あたりの Story 数目安
+  stories_per_feature: 3-5
+
+  # 工数ラベルのフォーマット
+  estimate_label_format: "estimate:{hours}h"
+
+  # 優先度ラベルのフォーマット
+  priority_labels:
+    high: "priority:high"
+    medium: "priority:medium"
+    low: "priority:low"
+
+# =============================================================================
+# 品質ゲート設定
+# =============================================================================
+quality_gates:
+  # 必須チェック項目
+  epic:
+    - "title_has_business_value"
+    - "acceptance_criteria_count_3_to_7"
+    - "in_out_scope_defined"
+    - "owner_assigned"
+    - "metrics_measurable"
+
+  feature:
+    - "independently_releasable"
+    - "has_acceptance_criteria"
+
+  story:
+    - "fits_in_sprint"
+    - "has_acceptance_criteria"
+    - "estimate_assigned"
+
+# =============================================================================
+# GitHub同期設定
+# =============================================================================
+github_sync:
+  # 同期対象
+  sync_epics: true
+  sync_features: true
+  sync_stories: true
+
+  # ラベル自動作成
+  create_labels: true
+
+  # マイルストーン自動作成
+  create_milestones: true
+
+  # プロジェクトフィールド
+  fields:
+    start_date: "Start Date"
+    end_date: "End Date"
+    estimate: "Estimate Hours"
+    priority: "Priority"
+
+# =============================================================================
+# GitHub Project Export 設定（GitHub Project -> WorkItem JSON）
+# =============================================================================
+github_export:
+  type_field: "Type"
+  status_field: "Status"
+  priority_field: "Priority"
+  estimate_field: "Estimate"
+  start_date_field: "Start Date"
+  end_date_field: "End Date"
+
+# =============================================================================
+# Azure DevOps Sync 設定（任意）
+# =============================================================================
+ado_sync:
+  # Work Item type mapping (optional overrides)
+  # work_item_types:
+  #   epic: "Epic"
+  #   feature: "Feature"
+  #   story: "User Story"
+  #   task: "Task"
+  #   bug: "Bug"
+
+  # Field name overrides (optional)
+  # fields:
+  #   priority: "Microsoft.VSTS.Common.Priority"
+  #   start_date: "Microsoft.VSTS.Scheduling.StartDate"
+  #   target_date: "Microsoft.VSTS.Scheduling.TargetDate"
+  #   estimate: "Microsoft.VSTS.Scheduling.Effort"
+
+  # Enable optional field updates
+  enable_priority_field: false
+  enable_estimate_field: false
+  enable_schedule_fields: false
+  enable_state_updates: false
+  set_state_on_create: false
+
+# =============================================================================
+# GitLab Sync 設定（任意）
+# =============================================================================
+gitlab_sync:
+  # タイプラベル（ラベルでWork Item種別を表現）
+  type_labels:
+    epic: "Epic"
+    feature: "Feature"
+    story: "Story"
+    task: "Task"
+    bug: "Bug"
+
+  # ステータスラベル（ラベルで状態を表現）
+  status_labels:
+    backlog: "Backlog"
+    todo: "To Do"
+    in_progress: "Doing"
+    in_review: "In Review"
+    done: "Done"
+
+  # 優先度ラベル（スコープ付きラベル推奨）
+  priority_labels:
+    high: "priority::high"
+    medium: "priority::medium"
+    low: "priority::low"
+
+  # 機能フラグ
+  enable_epics: false          # Premium機能: グループEpicを使用
+  enable_time_tracking: true   # Time Estimate を設定
+  enable_due_date: true        # Due Date を設定
+  enable_weight: false         # Premium機能: Weight を設定
+  use_scoped_labels: true      # :: 形式のスコープ付きラベルを使用
+
+# =============================================================================
+# 出力設定
+# =============================================================================
+output:
+  # 出力形式
+  formats:
+    - "markdown"      # .concept/epics/*.md
+    - "github_issues" # GitHub Issues作成
+    - "charter_yml"   # charter.yml更新
+
+  # ガントチャート生成
+  gantt:
+    enabled: true
+    format: "mermaid"
+    output_path: ".concept/gantt.md"

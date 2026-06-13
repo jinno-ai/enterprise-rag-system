@@ -1,0 +1,53 @@
+# Epic-Driven Planning - Gitignore
+# ============================================
+
+# ===========================================
+# 出力ディレクトリ（生成物・一時データ）
+# ===========================================
+output/
+output2/
+output_realtime/
+test_output/
+test_registry/
+
+# ===========================================
+# プロジェクト固有設定（個人・環境依存）
+# ===========================================
+# テンプレートからコピーして使用するファイル
+tokyo_career_up_config.yaml
+real_config.yaml
+*_config.yaml
+!config_template.yaml
+!config_github.yaml
+!config_gitlab.yaml
+!config_ado.yaml
+
+# テスト用設定
+test_config.yaml
+integration_test_config.yaml
+full_pipeline_config.yaml
+
+# ===========================================
+# Python キャッシュ
+# ===========================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# ===========================================
+# IDE・エディタ
+# ===========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===========================================
+# OS生成ファイル
+# ===========================================
+.DS_Store
+Thumbs.db

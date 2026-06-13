@@ -23,3 +23,6 @@ _bmad/
 .ucg-temp/
 .ucg_hang_detection.json
 worktrees/
+
+# Test coverage artifacts
+.coverage
