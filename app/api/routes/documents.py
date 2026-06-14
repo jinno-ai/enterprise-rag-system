@@ -87,7 +87,11 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
             vector_db.create_index(dimension=embedding_model.dimension)
         
         ids = [chunk.doc_id for chunk in chunks]
-        metadata = [chunk.metadata for chunk in chunks]
+        metadata = []
+        for chunk in chunks:
+            meta = chunk.metadata.copy()
+            meta['text'] = chunk.content  # Essential for HybridRetriever
+            metadata.append(meta)
         
         vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
         
@@ -176,7 +180,11 @@ async def upload_document(
                 vector_db.create_index(dimension=embedding_model.dimension)
             
             ids = [chunk.doc_id for chunk in chunks]
-            metadata = [chunk.metadata for chunk in chunks]
+            metadata = []
+            for chunk in chunks:
+                meta = chunk.metadata.copy()
+                meta['text'] = chunk.content
+                metadata.append(meta)
             
             vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
             
