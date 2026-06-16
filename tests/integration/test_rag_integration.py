@@ -224,7 +224,7 @@ def test_retrieval_with_filters():
 @pytest.mark.integration
 def test_confidence_calculation():
     """Test confidence score calculation"""
-    from app.services.retrieval import RetrievalResult
+    from app.services.retrieval import RetrievalResult, HybridRetriever
     from app.services.rag_pipeline import RAGPipeline
     from app.core.vectordb import get_vector_db
     from app.core.embeddings import get_embedding_model
