@@ -2,7 +2,7 @@
 Pydantic schemas for request/response validation
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
@@ -14,8 +14,8 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
     include_sources: bool = Field(default=True, description="Include source documents")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "query": "What is our company policy on remote work?",
                 "collection": "hr-policies",
@@ -23,6 +23,7 @@ class QueryRequest(BaseModel):
                 "include_sources": True
             }
         }
+    )
 
 
 class Source(BaseModel):
