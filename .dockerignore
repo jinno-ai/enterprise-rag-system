@@ -1,0 +1,31 @@
+# Git files
+.git
+.gitignore
+
+# GitHub Actions
+.github
+
+# Documentation
+*.md
+LICENSE
+
+# Docker files
+Dockerfile
+Dockerfile.streamlit
+docker-compose.yml
+
+# Python virtual environment
+venv
+.venv
+env
+.env
+.env.example
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Test files
+tests/
