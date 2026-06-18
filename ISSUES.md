@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入によるBM25検索精度の改善
+
+**タイトル:** 日本語形態素解析（Sudachi/MeCab）の導入とAPIルーティングの適正化
+
+**内容:**
+現在、`HybridRetriever.build_bm25_index` における日本語のトークナイズが単純な正規表現 (`\w+`) で行われており、日本語ドキュメントの検索精度が著しく低くなっています。また、`app/main.py` において本来使用すべき `app/api/routes/documents.py` ではなく、モックである `app/api/routes/ingest.py` がマウントされています。これらを改善し、本番環境に耐えうる日本語検索基盤を構築します。
+
+**タスク:**
+- [ ] `SudachiPy` または `MeCab` を導入し、日本語に最適化されたトークナイザーを実装する
+- [ ] `app/main.py` のルーティングを `ingest.router` から `documents.router` へ切り替える
+- [ ] `app/api/routes/documents.py` に不足しているマルチコレクション対応のTODOを解消する
+- [ ] 日本語クエリに対するBM25の検索精度評価テストを追加する
