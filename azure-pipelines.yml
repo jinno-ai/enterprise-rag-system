@@ -23,7 +23,7 @@ steps:
 
 - script: |
     export OPENAI_API_KEY=sk-dummy
-    python -m pytest --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
+    python -m pytest tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=app --cov-report=xml --cov-report=html
   displayName: 'Run tests'
 
 - task: PublishTestResults@2
