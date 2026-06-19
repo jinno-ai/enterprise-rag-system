@@ -87,3 +87,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入によるBM25検索精度の改善
+
+**タイトル:** 日本語テキストのための形態素解析エンジン導入とドキュメントAPIの統合
+
+**内容:**
+現在、`HybridRetriever.build_bm25_index` におけるトークン分割は単純な正規表現 (`\w+`) に依存しており、日本語ドキュメントを適切に分かち書きできません。これにより、キーワード検索（BM25）の精度が著しく低下しています。また、`app/main.py` ではモックの `ingest.router` が使用されており、高度な機能を備えた `app/api/routes/documents.py` が統合されていません。
+
+**タスク:**
+- [ ] `SudachiPy` または `Janome` などの日本語形態素解析ライブラリを導入する
+- [ ] `HybridRetriever` のトークナイザーを日本語対応に差し替える
+- [ ] `app/main.py` のエンドポイントを `ingest.router` から `documents.router` に移行し、モック実装を廃止する
