@@ -7,6 +7,7 @@ supporting Pinecone, Weaviate, and FAISS.
 
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+import os
 import numpy as np
 from dataclasses import dataclass
 
@@ -62,6 +63,39 @@ class VectorDB(ABC):
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         pass
+
+    def add_documents(
+        self,
+        documents: List[str],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
+        """
+        Helper method to add documents with embeddings and metadata.
+
+        Args:
+            documents: List of document texts
+            embeddings: List of embedding vectors
+            metadatas: Optional list of metadata dictionaries
+        """
+        import uuid
+
+        if metadatas is None:
+            metadatas = [{} for _ in documents]
+
+        if len(metadatas) != len(documents):
+            raise ValueError("Number of metadatas must match number of documents")
+
+        # Ensure text is in metadata
+        prepared_metadatas = []
+        for i, meta in enumerate(metadatas):
+            m = meta.copy()
+            m["text"] = documents[i]
+            prepared_metadatas.append(m)
+
+        ids = [str(uuid.uuid4()) for _ in documents]
+
+        self.upsert(vectors=embeddings, ids=ids, metadata=prepared_metadatas)
 
 
 class PineconeVectorDB(VectorDB):
@@ -236,10 +270,15 @@ class FAISSVectorDB(VectorDB):
         metadata: List[Dict[str, Any]]
     ) -> None:
         """Insert or update vectors in FAISS"""
-        if self.index is None:
-            raise RuntimeError("Index not created. Call create_index() first.")
-        
+        import faiss
         import numpy as np
+
+        if self.index is None:
+            if vectors:
+                dimension = len(vectors[0])
+                self.create_index(dimension=dimension)
+            else:
+                raise RuntimeError("Index not created and no vectors provided to infer dimension.")
         
         vectors_np = np.array(vectors, dtype=np.float32)
         
@@ -274,7 +313,10 @@ class FAISSVectorDB(VectorDB):
         query_np = np.array([query_vector], dtype=np.float32)
         faiss.normalize_L2(query_np)
         
-        distances, indices = self.index.search(query_np, top_k)
+        # FAISS IndexFlat does not support metadata filtering natively.
+        # If filter_dict is provided, we need to over-retrieve and filter manually.
+        actual_top_k = top_k * 10 if filter_dict else top_k
+        distances, indices = self.index.search(query_np, actual_top_k)
         
         search_results = []
         for dist, idx in zip(distances[0], indices[0]):
@@ -284,12 +326,27 @@ class FAISSVectorDB(VectorDB):
             id_ = self.idx_to_id.get(idx)
             if id_:
                 metadata = self.metadata_store.get(id_, {})
+
+                # Apply filtering if filter_dict is provided
+                if filter_dict:
+                    match = True
+                    for key, value in filter_dict.items():
+                        if metadata.get(key) != value:
+                            match = False
+                            break
+                    if not match:
+                        continue
+
                 search_results.append(SearchResult(
                     id=id_,
                     score=float(dist),
                     metadata=metadata,
                     text=metadata.get("text", "")
                 ))
+
+                # Stop if we have enough results
+                if len(search_results) >= top_k:
+                    break
         
         return search_results
     
