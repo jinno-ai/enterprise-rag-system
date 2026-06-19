@@ -58,6 +58,7 @@ pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0
 pytest-mock==3.14.0
+pytest-azurepipelines
 
 # Development Tools
 black==23.12.1
