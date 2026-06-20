@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入によるBM25検索精度の改善とドキュメント管理APIの統合
+
+**タイトル:** 日本語形態素解析の導入によるBM25検索精度の改善とドキュメント管理APIの統合
+
+**内容:**
+現在、`HybridRetriever` のBM25検索では単純な正規表現 (`re.findall(r'\w+', doc.content.lower())`) によるトークナイズが行われており、単語の区切りが不明瞭な日本語ドキュメントの検索精度が著しく低いです。エンタープライズ品質の検索を実現するために、日本語形態素解析器（JanomeやSudachi等）を導入し、適切な分かち書きを行う必要があります。
+
+また、`app/main.py` では暫定的なモック実装である `ingest.router` が使用されていますが、これを `app/api/routes/documents.py` に実装されている高度なドキュメント管理API（ディレクトリ一括インジェスト、ファイルアップロード、バックグラウンド処理等）に完全に置き換える必要があります。
+
+**タスク:**
+- [ ] `requirements.txt` に日本語形態素解析ライブラリ（Janome等）を追加する
+- [ ] `app/services/retrieval.py` の `HybridRetriever.build_bm25_index` および `keyword_search` に日本語対応のトークナイザーを組み込む
+- [ ] `app/main.py` の `ingest.router` を廃止し、`documents.router` を `/api/v1` プレフィックスでマウントする
+- [ ] 新しいドキュメント管理APIの動作を検証するための統合テストを追加する
