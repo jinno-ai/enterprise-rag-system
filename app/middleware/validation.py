@@ -14,6 +14,7 @@ import logging
 from typing import Dict, Any
 
 from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -67,27 +68,32 @@ class ValidationMiddleware(BaseHTTPMiddleware):
 
         Returns:
             HTTP response with security headers
-
-        Raises:
-            HTTPException: If validation fails
         """
-        # 1. Content-Length check (DoS protection)
-        await self._validate_content_length(request)
+        try:
+            # 1. Content-Length check (DoS protection)
+            await self._validate_content_length(request)
 
-        # 2. Body validation for POST/PUT/PATCH requests
-        if request.method in ["POST", "PUT", "PATCH"]:
-            await self._validate_request_body(request)
+            # 2. Body validation for POST/PUT/PATCH requests
+            if request.method in ["POST", "PUT", "PATCH"]:
+                await self._validate_request_body(request)
 
-        # 3. Header validation
-        await self._validate_headers(request)
+            # 3. Header validation
+            await self._validate_headers(request)
 
-        # 4. Process request through next middleware/handler
-        response = await call_next(request)
+            # 4. Process request through next middleware/handler
+            response = await call_next(request)
 
-        # 5. Add security headers to response
-        await self._add_security_headers(request, response)
+            # 5. Add security headers to response
+            await self._add_security_headers(request, response)
 
-        return response
+            return response
+
+        except HTTPException as exc:
+            # Return appropriate JSON response for validation errors
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail}
+            )
 
     async def _validate_content_length(self, request: Request):
         """
