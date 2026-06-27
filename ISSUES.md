@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: クロスエンコーダー・リランカーの検索パイプラインへの統合
+
+**タイトル:** 検索精度の向上のためのクロスエンコーダー・リランカーの統合
+
+**内容:**
+現在、`app/services/reranker.py` にクロスエンコーダーによる再ランキング機能が実装されていますが、`HybridRetriever` や `ContextCompressor` のパイプラインには統合されていません。`ContextCompressor` 内に `TODO: Implement cross-encoder re-ranking` が残されており、これを解消して検索結果の精度を向上させる必要があります。
+
+**タスク:**
+- [ ] `ContextCompressor._rerank_and_truncate` メソッドに `Reranker` を統合する
+- [ ] `RAGPipeline` の初期化時に `Reranker` インスタンスを適切に渡せるようにする
+- [ ] `RERANKER_MODEL` 環境変数を `config.py` および `.env.example` に追加する
+- [ ] 再ランキング機能の有効化フラグをAPIリクエストパラメータに追加することを検討する
+- [ ] 統合後の検索パイプラインの結合テストを追加する
