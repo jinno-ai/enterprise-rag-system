@@ -14,6 +14,7 @@ import logging
 from typing import Dict, Any
 
 from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -71,23 +72,35 @@ class ValidationMiddleware(BaseHTTPMiddleware):
         Raises:
             HTTPException: If validation fails
         """
-        # 1. Content-Length check (DoS protection)
-        await self._validate_content_length(request)
+        try:
+            # 1. Content-Length check (DoS protection)
+            await self._validate_content_length(request)
 
-        # 2. Body validation for POST/PUT/PATCH requests
-        if request.method in ["POST", "PUT", "PATCH"]:
-            await self._validate_request_body(request)
+            # 2. Body validation for POST/PUT/PATCH requests
+            if request.method in ["POST", "PUT", "PATCH"]:
+                await self._validate_request_body(request)
 
-        # 3. Header validation
-        await self._validate_headers(request)
+            # 3. Header validation
+            await self._validate_headers(request)
 
-        # 4. Process request through next middleware/handler
-        response = await call_next(request)
+            # 4. Process request through next middleware/handler
+            response = await call_next(request)
 
-        # 5. Add security headers to response
-        await self._add_security_headers(request, response)
+            # 5. Add security headers to response
+            await self._add_security_headers(request, response)
 
-        return response
+            return response
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail}
+            )
+        except Exception as e:
+            logger.error(f"Unhandled error in validation middleware: {e}", exc_info=True)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error during validation"}
+            )
 
     async def _validate_content_length(self, request: Request):
         """
@@ -203,28 +216,32 @@ class ValidationMiddleware(BaseHTTPMiddleware):
         if self.validator.detect_xss(value):
             msg = f"Potentially malicious content (XSS) in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                client_host = request.client.host if request.client else "unknown"
+                logger.warning(f"{msg} - Client: {client_host}")
             raise HTTPException(400, detail=msg)
 
         # SQL injection detection
         if self.validator.detect_sql_injection(value):
             msg = f"SQL injection pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                client_host = request.client.host if request.client else "unknown"
+                logger.warning(f"{msg} - Client: {client_host}")
             raise HTTPException(400, detail=msg)
 
         # Path traversal detection
         if self.validator.detect_path_traversal(value):
             msg = f"Path traversal pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                client_host = request.client.host if request.client else "unknown"
+                logger.warning(f"{msg} - Client: {client_host}")
             raise HTTPException(400, detail=msg)
 
         # Command injection detection
         if self.validator.detect_command_injection(value):
             msg = f"Command injection pattern detected in field: {path}"
             if self.log_suspicious:
-                logger.warning(f"{msg} - Client: {request.client.host}")
+                client_host = request.client.host if request.client else "unknown"
+                logger.warning(f"{msg} - Client: {client_host}")
             raise HTTPException(400, detail=msg)
 
     async def _validate_headers(self, request: Request):
@@ -253,7 +270,8 @@ class ValidationMiddleware(BaseHTTPMiddleware):
 
         for header in suspicious_headers:
             if header in request.headers:
-                logger.info(f"Suspicious header detected: {header} from {request.client.host}")
+                client_host = request.client.host if request.client else "unknown"
+                logger.info(f"Suspicious header detected: {header} from {client_host}")
 
     async def _add_security_headers(self, request: Request, response: Response):
         """
