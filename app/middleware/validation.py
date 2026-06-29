@@ -14,6 +14,7 @@ import logging
 from typing import Dict, Any
 
 from fastapi import Request, HTTPException
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -90,7 +91,6 @@ class ValidationMiddleware(BaseHTTPMiddleware):
 
             return response
         except HTTPException as e:
-            from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=e.status_code,
                 content={"detail": e.detail}
