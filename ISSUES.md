@@ -87,3 +87,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入によるBM25検索精度の改善とAPI統合
+
+**タイトル:** 日本語検索精度の向上とドキュメント管理APIの正式統合
+
+**内容:**
+現在、`app/services/retrieval.py` におけるキーワード検索（BM25）のトークン分割は、単純な正規表現（`re.findall(r'\w+', ...)`）で行われています。これは日本語のような分かち書きをしない言語においては検索精度を著しく低下させます。また、`app/main.py` ではドキュメント登録APIとして `ingest.router` (Mock) が使用されており、正式な `documents.router` が統合されていません。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` に日本語形態素解析エンジン（SudachiPyなど）を導入し、トークナイザーを改善する
+- [ ] `app/main.py` のエンドポイントを `ingest.router` から `documents.router` に切り替え、既存のモック機能を正式な実装に置き換える
+- [ ] 複数のドキュメントコレクションをサポートするための `documents.py` 内のTODOを解消し、マルチテナント対応を強化する
