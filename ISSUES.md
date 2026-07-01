@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ドキュメント管理APIの統合とベクトルDBのインターフェース整合性向上
+
+**タイトル:** ドキュメント管理APIの統合とベクトルDBのインターフェース整合性向上
+
+**内容:**
+現在、システムには `app/api/routes/documents.py` に機能的なドキュメント管理APIが実装されていますが、`app/main.py` では依然としてモックである `ingest.router` が使用されています。また、ベクトルデータベースのインターフェースにおいて、抽象基底クラスの定義と具体的な実装（Pinecone, FAISS）の間で引数や機能（メタデータフィルタリング、コレクション対応）に不整合があります。
+
+**タスク:**
+- [ ] `app/main.py` のルーター設定を `ingest.router` から `documents.router` に移行する
+- [ ] `VectorDB.search` 抽象メソッドに `collection` 引数を追加し、`PineconeVectorDB` でも対応させる
+- [ ] `FAISSVectorDB.search` において、`filter_dict` によるメタデータフィルタリングを実装する（線形走査による事後フィルタリング等）
+- [ ] 各変更に対するユニットテストを更新・追加する
