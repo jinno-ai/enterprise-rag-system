@@ -16,8 +16,8 @@ steps:
 
 - script: |
     python -m pip install --upgrade pip
-    pip install -r requirements.txt
-    pip install pytest pytest-azurepipelines pytest-cov
+    pip install -r requirements-test.txt
+    pip install pytest-azurepipelines
   displayName: 'Install dependencies'
 
 - script: |
