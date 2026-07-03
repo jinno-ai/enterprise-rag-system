@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（Reranker統合）と日本語対応の強化
+
+**タイトル:** 検索精度の向上（Reranker統合）と日本語対応の強化
+
+**内容:**
+現在、`Reranker` サービスが実装されていますが、`HybridRetriever` や `RAGPipeline` に統合されていません。また、BM25検索において単純な正規表現によるトークナイズが行われており、日本語の検索精度に課題があります。さらに、`app/main.py` ではモックである `ingest.router` が使用されており、機能実装済みの `documents.router` への移行が必要です。
+
+**タスク:**
+- [ ] `Reranker` サービスを `HybridRetriever` に統合し、検索結果の再ランク付けを可能にする
+- [ ] 日本語形態素解析ライブラリ（JanomeやSudachi等）を導入し、BM25検索のトークナイズを改善する
+- [ ] `app/main.py` で `ingest.router` を廃止し、`documents.router` をマウントするように変更する
+- [ ] `FAISSVectorDB` の `search` メソッドで `filter_dict` を正しく処理するように実装する（現在は無視されている）
