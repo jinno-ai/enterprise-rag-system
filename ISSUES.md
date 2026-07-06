@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: FAISS実装の完全化とReranker/ドキュメント管理APIの統合
+
+**タイトル:** FAISS機能の補完、Rerankerの統合、およびドキュメント管理APIの正式採用
+
+**内容:**
+現在、FAISSのメタデータフィルタリングと削除機能が未実装（プレースホルダー）であり、Rerankerサービスも定義されていますがパイプラインに統合されていません。また、`app/main.py` ではモックの `ingest` ルーターが使用されており、機能的な `documents` ルーターが活用されていません。これらを統合し、システムをより実用的な状態に引き上げる必要があります。
+
+**タスク:**
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.search` におけるメタデータフィルタリングの実装
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.delete` の実装（インデックスの再構築を含む）
+- [ ] `app/main.py` の `lifespan` で `Reranker` を初期化し、`RAGPipeline` に注入する
+- [ ] `app/main.py` でモックの `ingest` ルーターを `documents` ルーターに置き換える
+- [ ] `app/middleware/validation.py` における `HTTPException` のキャッチと `request.client` のヌルチェックの実装（テスト失敗の修正）
+- [ ] 統合後の全体的な動作確認とテストの追加
