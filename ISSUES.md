@@ -87,3 +87,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語検索精度の向上、APIの統合、およびリランカーの実装
+
+**タイトル:** 日本語検索精度の向上、ドキュメントAPIの統合、およびCross-Encoderリランカーの実装
+
+**内容:**
+システムのコア機能を強化し、日本語ドキュメントに対する検索精度を向上させるとともに、モック実装を正式なAPIに置き換える必要があります。
+
+**タスク:**
+- [ ] **日本語対応の強化:** `app/services/document_loader.py` の `TextSplitter` および `app/services/retrieval.py` の `HybridRetriever.build_bm25_index` において、単純な文字分割や正規表現ではなく、Janome や Sudachi などの形態素解析エンジンを導入し、日本語の単語境界を正しく認識できるようにする。
+- [ ] **APIの統合:** `app/main.py` で現在使用されているモックの `ingest.router` を廃止し、`app/api/routes/documents.py` で実装されている機能的なドキュメント管理API（`/api/v1/documents`）に完全に移行する。
+- [ ] **リランカーの実装:** `app/services/retrieval.py` の `ContextCompressor._rerank_and_truncate` に、Cross-Encoder（例: `cross-encoder/ms-marco-MiniLM-L-6-v2` や BGE reranker）を用いた再ランク付け処理を実装し、検索結果の最上位により関連性の高いドキュメントが並ぶようにする。
