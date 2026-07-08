@@ -87,3 +87,31 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語検索精度の向上とAPI統合、リランカーの実装
+
+**タイトル:** 日本語検索精度の向上、ドキュメントAPIの正規統合、およびCross-Encoderリランカーの実装
+
+**内容:**
+現在のシステムには、日本語ドキュメントの処理精度、APIの統合状態、および検索結果の再ランク付けにおいて改善の余地があります。エンタープライズ用途での実用性を高めるため、以下の項目を実装・修正する必要があります。
+
+1. **日本語検索精度の向上 (形態素解析の導入):**
+   - 現在の `TextSplitter` および `HybridRetriever.build_bm25_index` は単純な区切り文字や正規表現によるトークン化を行っており、日本語の単語境界を正しく認識できません。
+   - `Janome` や `Sudachi` などの形態素解析エンジンを導入し、日本語ドキュメントの適切なチャンク分割とキーワードインデックス作成を実現します。
+
+2. **Document Management APIの正規統合:**
+   - `app/main.py` において、モック実装である `ingest.router` がマウントされており、`app/api/routes/documents.py` にある機能的なドキュメント管理APIが使用されていません。
+   - ルーターを `documents.router` に差し替え、実際のドキュメント処理（アップロード、ディレクトリ一括読み込み、Celeryによるバッチ処理）を有効化します。
+
+3. **Cross-Encoder Rerankerの実装:**
+   - `app/services/retrieval.py` の `ContextCompressor._rerank_and_truncate` がプレースホルダーのままです。
+   - `sentence-transformers` 等を用いた Cross-Encoder リランカーを実装し、検索精度の向上を図ります。
+
+**タスク:**
+- [ ] `app/services/document_loader.py` の `TextSplitter` に形態素解析オプションを追加する
+- [ ] `app/services/retrieval.py` の `HybridRetriever` で日本語トークナイザーを使用するように修正する
+- [ ] `app/main.py` のルーター設定を `ingest.router` から `documents.router` へ変更する
+- [ ] `app/services/retrieval.py` に Cross-Encoder によるリランク処理を実装する
+- [ ] 日本語クエリに対する検索精度の検証テストを追加する
