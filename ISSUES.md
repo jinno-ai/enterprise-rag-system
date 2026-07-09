@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**タイトル:** 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**内容:**
+検索エンジンの日本語対応、再ランク付け機能の実装、およびAPIの正式統合を行い、システム全体の精度と完成度を向上させます。
+
+**タスク:**
+- [ ] **日本語形態素解析の導入**: `Janome` または `Sudachi` を使用し、日本語ドキュメントのチャンク分割とBM25トークン化の精度を向上させる。
+- [ ] **Cross-Encoder Rerankerの実装**: `ContextCompressor` に再ランク付けロジックを実装し、検索精度の向上を図る。
+- [ ] **Documents APIの正式統合**: `app/main.py` の mock インジェストルーターを `app/api/routes/documents.py` に置き換える。
+- [ ] **FAISS メタデータフィルタリングの修正**: `FAISSVectorDB.search` で `filter_dict` が機能するように実装を更新する。
