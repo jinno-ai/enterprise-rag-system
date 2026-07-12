@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とドキュメント管理APIの統合
+
+**タイトル:** 日本語検索の最適化、再ランク付けの実装、およびドキュメント管理APIの完全統合
+
+**内容:**
+現在、検索システムは基本的な分かち書きに基づいており、日本語ドキュメントに対する精度に改善の余地があります。また、`Reranker` サービスが実装されていますがパイプラインに統合されておらず、`app/main.py` ではモックのインジェストラウターが使用されています。
+
+**タスク:**
+- [ ] `app/services/document_loader.py` と `app/services/retrieval.py` に日本語形態素解析（JanomeまたはSudachi）を導入し、チャンク分割とBM25トークナイズを改善する
+- [ ] `ContextCompressor` に `Reranker` を統合し、Cross-Encoderによる再ランク付けを有効化する
+- [ ] `app/main.py` の `ingest.router` を `app/api/routes/documents.py` に置き換え、ドキュメント管理機能を完全有効化する
+- [ ] `FAISSVectorDB.delete` メソッドを実装し、ドキュメントの削除・更新をサポートする
+- [ ] `FAISSVectorDB.search` が `filter_dict` を正しく解釈するように修正する
