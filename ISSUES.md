@@ -102,5 +102,5 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 - [ ] `app/core/vectordb.py` の `FAISSVectorDB.delete` の実装（インデックスの再構築を含む）
 - [ ] `app/main.py` の `lifespan` で `Reranker` を初期化し、`RAGPipeline` に注入する
 - [ ] `app/main.py` でモックの `ingest` ルーターを `documents` ルーターに置き換える
-- [ ] `app/middleware/validation.py` における `HTTPException` のキャッチと `request.client` のヌルチェックの実装（テスト失敗の修正）
+- [x] `app/middleware/validation.py` における `HTTPException` のキャッチと `request.client` のヌルチェックの実装（テスト失敗の修正）
 - [ ] 統合後の全体的な動作確認とテストの追加
