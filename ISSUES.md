@@ -87,3 +87,26 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とシステム基盤の整理
+
+**タイトル:** 日本語検索の最適化、再ランク付けの実装、およびAPIの完成
+
+**内容:**
+現在のシステムには、日本語ドキュメントに対する検索精度の課題や、一部のAPIがモックのままであるなどの未完了事項があります。エンタープライズレベルの品質を実現するため、以下の改善を行います。
+
+- **日本語対応の強化:** BM25トークナイズやテキスト分割にJanomeまたはSudachiを導入し、日本語の単語境界を正しく扱えるようにします。
+- **再ランク付け (Reranking) の統合:** `Reranker` サービスを `HybridRetriever` または `ContextCompressor` に統合し、検索結果の精度を向上させます。
+- **VectorDB インターフェースの不整合解消:** `VectorDB` 基底クラス、`PineconeVectorDB`、および `HybridRetriever.semantic_search` 間で `collection` パラメータの有無が不整合な箇所を修正します。
+- **FAISSVectorDB の機能補完:** `FAISSVectorDB.delete` メソッドを実装し、ドキュメントの削除を可能にします。
+- **APIルートの整理:** `app/main.py` で使用されているモックの `ingest` ルーターを、機能実装済みの `app/api/routes/documents.py` に置き換えます。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリを `requirements.txt` に追加する
+- [ ] `app/services/document_loader.py` と `app/services/retrieval.py` に形態素解析を導入する
+- [ ] `app/services/retrieval.py` で `Reranker` を呼び出すように修正する
+- [ ] `VectorDB` およびその派生クラスのメソッドシグネチャを統一する
+- [ ] `FAISSVectorDB.delete` を実装する
+- [ ] `app/main.py` で `ingest` ルーターを `documents` ルーターに変更する
