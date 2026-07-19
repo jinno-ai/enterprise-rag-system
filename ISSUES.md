@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: モックIngest APIの廃止と本物のDocuments APIへの完全移行
+
+**タイトル:** モックされた `ingest.py` ルーティングの廃止、および高機能な `documents.py` APIエンドポイントへの移行
+
+**内容:**
+現在、`app/main.py` では、ドキュメントのインジェスト機能としてモック実装である `app/api/routes/ingest.py` がマウントされ、利用されています。しかし、実際には、バックグラウンドでのCeleryバッチ処理や統計情報の取得、ファイルの単一アップロードなどをサポートする本物の `app/api/routes/documents.py` が実装されています。
+
+この2つのルーティングが混在しており、モックが使用され続けている状態は、プロダクション運用の妨げになり、かつユーザーに誤解を招く原因となります。そのため、`ingest.py` を廃止し、`documents.py` へと完全に移行し、エンドポイントのポートフォリオを共通化する必要があります。
+
+**タスク:**
+- [ ] `app/main.py` にて `app.include_router(ingest.router)` を削除し、`app.include_router(documents.router, prefix="/api/v1")` に置き換える
+- [ ] 既存のモックAPIファイルである `app/api/routes/ingest.py` を削除、または非推奨としてアーカイブする
+- [ ] `app/api/routes/documents.py` 内の `get_vector_db` 呼び出しにおける `db_type="faiss"` のハードコーディングを修正し、`settings.vector_db_type` などの動的な設定に基づくように変更する
+- [ ] 新しいエンドポイント `/api/v1/documents` に関するテスト（インジェスト、アップロード、バッチ、統計取得）を追加、または既存のテストを移行先に合わせて修正する
