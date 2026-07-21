@@ -1,17 +1,33 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# Enterprise RAG System - Azure Pipeline
+# This pipeline runs tests on Python 3.11 using a hosted Ubuntu agent.
 
 trigger:
 - main
+- develop
 
-pool: Default
+pool:
+  vmImage: 'ubuntu-latest'
+
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.11'
+  displayName: 'Use Python 3.11'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    python -m pip install --upgrade pip
+    pip install -r requirements-test.txt
+    pip install pytest-azurepipelines
+  displayName: 'Install dependencies'
+
+- script: |
+    pytest tests/unit -v --cov=app --cov-report=xml
+  displayName: 'Run unit tests'
+  env:
+    OPENAI_API_KEY: 'no-key-provided'
+
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+  displayName: 'Publish Code Coverage Results'
