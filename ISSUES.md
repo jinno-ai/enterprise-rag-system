@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: モックのインジェストエンドポイントから機能的なドキュメント管理APIへの完全移行とFAISSVectorDBの削除機能の実装
+
+**タイトル:** ドキュメント管理APIの完全統合とFAISSVectorDBの削除機能の実装によるドキュメント・ライフサイクルの適正化
+
+**内容:**
+現在、ドキュメントのアップロードや一括バッチインジェスト、統計取得を行う機能性の高い `app/api/routes/documents.py` (Documents API) が存在していますが、`app/main.py` ではこれがマウントされておらず、代わりにモック実装である `/api/v1/ingest` (Mock Ingest Router) がマウントされたままになっています。このため、本番対応のドキュメント登録機能や非同期バッチ処理がクライアントから利用できません。
+また、ドキュメントを削除するための `FAISSVectorDB.delete` メソッドが現在プレースホルダーのままであり、ドキュメントの安全な削除やインデックスの再構築がサポートされていません。
+エンタープライズ対応のドキュメント・ライフサイクル管理を完遂するために、Documents APIのエンドポイントを完全に統合し、FAISSVectorDBの削除機能および関連ルートを実装する必要があります。
+
+**タスク:**
+- [ ] `app/main.py` からモックの `ingest.py` ルーターのマウントを廃止し、機能が豊富な `documents.py` ルーターを `/api/v1` 配下に統合してマウントする。
+- [ ] `app/core/vectordb.py` 内の `FAISSVectorDB.delete` メソッドを正しく実装する（指定されたIDのドキュメントを除外し、必要に応じてFAISSインデックスとIDマッピング、およびメタデータストアを再構築する）。
+- [ ] `app/api/routes/documents.py` にドキュメントを個別に、または一括で削除するためのエンドポイント（`DELETE /documents/{doc_id}`、`DELETE /documents`）を追加し、`VectorDB` を介して削除処理を実行できるようにする。
+- [ ] 新しい削除機能およびルーター統合をカバーする単体テスト（`tests/unit/test_documents_delete.py` 等）を追加し、回帰テストを実行して全体の健全性を確認する。
