@@ -87,3 +87,25 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**タイトル:** 日本語RAG検索精度の向上とドキュメント管理APIの正式統合
+
+**内容:**
+本システムは現在、英語の検索を前提とした単純な正規表現トークナイズ（`re.findall`）をBM25で使用しており、日本語の検索クエリやドキュメントに対して正確なキーワードマッチングが行えません。また、ドキュメント管理・一括インジェストを行うための高性能なAPIエンドポイント（`app/api/routes/documents.py`）が用意されているにもかかわらず、現在 `app/main.py` にはモックである `ingest.py` のルーターがマウントされています。
+
+本Issueでは、日本語の分かち書きトークナイズを導入し、Cross-Encoderによる再ランク付けを実稼働させ、さらにドキュメント管理APIの正式マウントとFAISSVectorDBのドキュメント削除機能を完成させることで、エンタープライズ品質の検索機能とAPI構造を統合・完成させます。
+
+**タスク:**
+- [ ] **日本語トークナイズの導入:**
+  - `TextSplitter`（`app/services/document_loader.py`）および `HybridRetriever` の BM25 トークナイズ処理（`app/services/retrieval.py`）に形態素解析ライブラリ（JanomeやSudachi等）または日本語対応の切り替えをサポートする。
+- [ ] **Rerankerの統合:**
+  - `ContextCompressor`（`app/services/retrieval.py`）の `_rerank_and_truncate` メソッドにおいて、`Reranker`（`app/services/reranker.py`）を呼び出して Cross-Encoder 再ランク付けを適用する。
+- [ ] **APIの正式マウントとインジェストルーターの統合:**
+  - `app/main.py` においてモックの `ingest.router` のマウントを廃止し、`app/api/routes/documents.py` を正式にインポート・マウントして各種エンドポイント（`/documents/ingest`, `/documents/upload`, `/documents/stats`, `/documents/batch`等）を有効化する。
+- [ ] **FAISSVectorDBの削除・検索機能の修正:**
+  - `FAISSVectorDB.delete`（`app/core/vectordb.py`）がプレースホルダー（警告出力のみ）となっているため、インデックスを再構築して実際にベクトルとメタデータを削除できる機能を実装する。
+  - `FAISSVectorDB.search` で `filter_dict` 引数を正しく解釈し、メタデータフィルタリング（コレクションやファイルタイプ等による絞り込み）が動作するようにロジックを修正する。
