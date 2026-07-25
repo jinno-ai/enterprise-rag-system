@@ -21,8 +21,8 @@ steps:
   displayName: 'Install dependencies'
 
 - script: |
-    export OPENAI_API_KEY=sk-dummy
-    python -m pytest tests/ -v --cov=app --cov-report=xml
+    export OPENAI_API_KEY=no-key-provided
+    python -m pytest tests/unit -v --cov=app --cov-report=xml
   displayName: 'Run tests'
 
 - task: PublishCodeCoverageResults@1
