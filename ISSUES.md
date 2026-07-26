@@ -87,3 +87,29 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Cross-Encoder Rerankerの有効化と実用的なドキュメント管理APIの統合
+
+**タイトル:** リランカーの統合、実用的なドキュメント管理APIのルーティング統合、およびFAISSVectorDBの削除処理の実装
+
+**内容:**
+現在、高度なRAG精度（Epic E-02）を達成するための技術要素として、`app/services/reranker.py` にCross-Encoderベースの `Reranker` サービスが実装されています。しかし、FastAPIのアプリケーション起動ライフサイクル（`lifespan`）や `RAGPipeline` の初期化プロセスにおいて、この `Reranker` が適切にセットアップされ統合されていません。
+
+また、`app/api/routes/documents.py` にはアップロードや統計情報の取得、非同期一括処理に対応した高機能なドキュメント管理APIが定義されていますが、`app/main.py` では依然としてモックでしかない `app/api/routes/ingest.py`（`/api/v1/ingest`）がマウントされており、本質的なドキュメント管理機能に外部からアクセスできない状態になっています。
+
+さらに、ベクトルデータベースの抽象化クラス `VectorDB` において `delete` メソッドが定義されていますが、ローカル開発用の `FAISSVectorDB` の実装（`app/core/vectordb.py`）ではプレースホルダーのみとなっており、ドキュメントの削除処理が動作しません。
+
+**タスク:**
+- [ ] **Rerankerのライフサイクル統合:**
+  - `app/main.py` の `lifespan` において、`settings` に基づき `Reranker` クラスのインスタンスを初期化し、`RAGPipeline` インスタンスへインジェクションする。
+- [ ] **ドキュメント管理APIの有効化:**
+  - `app/main.py` でモックの `ingest.router` の代わりに、本実装である `app/api/routes/documents.py` のルーターを `/api/v1` のプレフィックス配下に正しくマウントする。
+  - ルーター呼び出し時のベクトルDB取得（`get_vector_db`）について、ハードコードされた `"faiss"` ではなく、設定値（`settings.vector_db_type`）に基づき動的にDBタイプが選択されるように修正する。
+- [ ] **FAISSVectorDBにおけるdeleteメソッドの実装:**
+  - `FAISSVectorDB.delete(self, ids: List[str], collection: str = "default")` において、指定されたIDのドキュメントをメタデータストアおよびマッピングから削除し、FAISSのインデックスを正常に再構築・永続化するロジックを実装する。
+- [ ] **結合・ユニットテストの追加・更新:**
+  - 統合されたRerankerが実際にクエリのRe-rankingに寄与していることを検証するテストを追加する。
+  - 有効化したドキュメント管理API（`/api/v1/documents/upload` 等）の動作を検証する統合テストを追加する。
+  - `FAISSVectorDB.delete` の正常動作を検証する単体テストを追加する。
