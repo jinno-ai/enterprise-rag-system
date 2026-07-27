@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ドキュメント管理APIの統合とFAISSベクトルの削除機能のサポート
+
+**タイトル:** ドキュメント管理APIの統合とFAISSベクトルの削除機能のサポート (Document Management API Integration & FAISS Vector Deletion Support)
+
+**内容:**
+現在、`app/api/routes/documents.py` で定義されているドキュメント管理用のエンドポイント（`/documents/upload`、`/documents/stats` など）が `app/main.py` にマウントされていません。また、`FAISSVectorDB.delete` はプレースホルダー（警告ログのみ）になっており、ドキュメントの削除やインデックスの再構築がサポートされていません。
+
+本番環境の長期運用において、不要になったドキュメントや誤ってアップロードされたドキュメントを安全に削除し、ディスクやメモリを解放する機能は必須です。
+
+**タスク:**
+- [ ] `app/main.py` に `/documents` のAPIルーターを追加し、管理用API（一括インジェスト、アップロード、統計情報など）を有効化する
+- [ ] `FAISSVectorDB.delete` メソッドを正しく実装し、指定されたIDのベクトルとメタデータを削除できるようにする（FAISSの仕様上、直接削除が難しいため、インデックスの全再構築をトリガーするか、IDフィルタリングなどの仕組みを導入する）
+- [ ] `DELETE /documents/{doc_id}` もしくは `DELETE /documents/collection/{collection}` のような削除用APIエンドポイントを追加する
+- [ ] 削除機能および統計情報取得機能のユニットテスト/結合テストを新規に作成し、動作を検証する
