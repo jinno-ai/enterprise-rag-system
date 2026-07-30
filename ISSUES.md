@@ -87,3 +87,21 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: VectorDB/ドキュメント管理の整合性向上と日本語検索精度の改善
+
+**タイトル:** VectorDB/ドキュメント管理の整合性向上と日本語検索精度の改善
+
+**内容:**
+現在、アプリケーションにはいくつかの技術的負債や未実装の機能があり、特にドキュメント管理と検索品質（日本語対応）において本番運用の課題となっています。
+1. **FAISSでのドキュメント削除機能の未実装:** `FAISSVectorDB.delete` がプレースホルダーのままで、インデックスからの実削除に対応していません。
+2. **ルーティングのモック化:** `app/main.py` にて実機能を持つ `documents` ルーターではなく、モックの `ingest` ルーターがマウントされています。また、`app/api/routes/documents.py` にて `db_type="faiss"` がハードコードされており、構成変数 `settings.vector_db_type` が無視されています。
+3. **日本語の簡易トークン化:** `HybridRetriever.build_bm25_index` がシンプルな正規表現 `re.findall(r'\w+', ...)` でトークナイズしているため、分かち書きを行わない日本語の検索精度が低下します。日本語の形態素解析（例: Janome や Sudachi）を導入する必要があります。
+
+**タスク:**
+- [ ] `FAISSVectorDB.delete` メソッドを実装し、不要になったドキュメントのベクトルおよびメタデータを削除してインデックスを再構築（またはID除外）できるようにする
+- [ ] `app/main.py` のエンドポイントマウント先を、モックの `/api/v1/ingest` から、本物の `/api/v1/documents` に統合・置換する
+- [ ] `app/api/routes/documents.py` 内の `get_vector_db` 呼び出しで、ハードコードされた `"faiss"` を `settings.vector_db_type` に変更する
+- [ ] `HybridRetriever` の BM25 インデックス作成処理において、日本語ドキュメント向けに形態素解析を用いたトークナイザーを導入または選択可能にする
