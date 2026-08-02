@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ベクトルデータベース削除機能の実装とドキュメント管理APIの統合
+
+**タイトル:** `FAISSVectorDB.delete` の実装と実用的なドキュメント管理API (`documents.py`) の有効化
+
+**内容:**
+現在、`FAISSVectorDB` 内の `delete` メソッドは「削除未対応（要再構築）」の旨の警告を出力するだけのプレースホルダーとなっています。エンタープライズRAGシステムにおいて、ドキュメントの削除（ナレッジの更新・破棄）はデータガバナンスおよびセキュリティ観点から重要な要件です。また、`app/main.py` ではモックの `ingest.py` ルーターが登録されているのみで、高度な機能（Celery非同期一括登録など）を持つ本番用の `app/api/routes/documents.py` ルーターが登録されておらず、利用できません。さらに、`documents.py` 内でベクトルデータベースを取得する際、構成設定 of `settings.vector_db_type` ではなく、`db_type="faiss"` がハードコードされています。
+
+**タスク:**
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.delete` メソッドを実装する（対象IDのベクトル・メタデータをメモリおよびインデックスから削除し、変更を保存できるように再構築する）
+- [ ] `app/core/config.py` に `vector_db_type` の設定フィールド（デフォルトは `"faiss"`）を追加し、環境変数 `VECTOR_DB_TYPE` を通じて設定可能にする
+- [ ] `app/api/routes/documents.py` で `db_type=settings.vector_db_type` を使用するように修正し、ハードコードを排除する
+- [ ] `app/main.py` にて `ingest.router` に代わり、本物のドキュメント管理ルーター `documents.router` を `/api/v1` プレフィックス配下にマウントする
+- [ ] 実装した削除機能および統合されたエンドポイントを検証するためのユニットテスト・APIテストを追加する
