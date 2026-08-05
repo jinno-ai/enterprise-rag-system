@@ -6,7 +6,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  OPENAI_API_KEY: 'sk-dummy'
+  OPENAI_API_KEY: 'no-key-provided'
 
 steps:
 - task: UsePythonVersion@0
