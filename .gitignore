@@ -29,5 +29,7 @@ worktrees/
 
 # Test coverage artifacts
 .coverage
+coverage.xml
+test-output.xml
 htmlcov/
 .pytest_cache/
