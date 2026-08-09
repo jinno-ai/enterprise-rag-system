@@ -87,3 +87,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ドキュメント管理APIの統合とVectorDBポータビリティの改善
+
+**タイトル:** ドキュメント管理API (`documents.py`) の統合とベクトルデータベースポータビリティの改善
+
+**内容:**
+現在、`app/api/routes/documents.py` には単一ファイルのアップロード、統計情報、および Celery を用いた非同期バッチ処理など、豊富なドキュメント管理機能が実装されていますが、これらは `app/main.py` でマウントされておらず、代わりに最小限のモック実装である `ingest.py` ルーターが登録されています。また、`documents.py` 内部では `get_vector_db` の呼び出しにおいて `db_type="faiss"` がハードコードされており、設定済みの `settings.vector_db_type` が無視される仕様になっているため、ベクトルデータベースのポータビリティ（例: Pinecone 等への移行）を阻害しています。
+
+**タスク:**
+- [ ] `app/main.py` にモックの `ingest.router` に代わり、またはそれを拡張して本格的な `documents.router` を登録/マウントする。
+- [ ] `app/api/routes/documents.py` のエンドポイント（`/ingest`, `/upload`, `/stats` 等）で `get_vector_db` を呼び出す際、ハードコードされた `"faiss"` を廃止し、`settings.vector_db_type` を参照するか、依存性注入（Depends）を介して動的に VectorDB インスタンスを受け取るよう修正する。
+- [ ] ドキュメント管理 API に対応したユニットテストおよび統合テストを整備・追加し、DBポータビリティや非同期バッチ処理、統計取得の堅牢性を担保する。
