@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: FAISSベクトルデータベースにおけるメタデータフィルタリング（filter_dict）の実装と統合
+
+**タイトル:** FAISSベクトルデータベースにおけるメタデータフィルタリングの実装と統合
+
+**内容:**
+現在、`FAISSVectorDB`クラスの`search`メソッドには、シグネチャとして`filter_dict`パラメータが定義されていますが、実際の処理ではこのパラメータが完全に無視されています。エンタープライズユースケースにおいて、マルチテナント対応や特定のカテゴリ・ファイル形式に絞り込んだ意味探索を行うためには、メタデータフィルタリング機能のサポートが必須です。
+
+また、`app/api/routes/documents.py`のドキュメントインジェストやアップロード処理では、`settings.vector_db_type`を介さず直接`db_type="faiss"`がハードコードされており、接続先の柔軟性が制限されています。
+
+**タスク:**
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.search` において、`filter_dict` の値（例: キーと値の完全一致など）に基づいて検索結果を絞り込むフィルタリングロジックを実装する
+- [ ] `app/api/routes/documents.py` の各種エンドポイントで、ハードコードされた `"faiss"` を `settings.vector_db_type` （または適切なDI）に変更する
+- [ ] フィルタリング機能の挙動を確認するためのユニットテストを `tests/unit/test_vectordb_collections.py` などのテストファイルに追加する
+- [ ] `HybridRetriever.retrieve` との統合が正常に動作することを確認し、検証する
