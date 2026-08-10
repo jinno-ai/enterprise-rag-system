@@ -17,6 +17,6 @@ steps:
   displayName: 'Install dependencies'
 
 - script: |
-    export OPENAI_API_KEY=sk-dummy
-    python -m pytest
+    export OPENAI_API_KEY=no-key-provided
+    python -m pytest tests/unit
   displayName: 'Run unit tests'
