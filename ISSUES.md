@@ -87,3 +87,21 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 機能的なドキュメント管理APIの統合とモック（ingest）エンドポイントの置き換え
+
+**タイトル:** `app/api/routes/documents.py`の統合とモックエンドポイントの廃止
+
+**内容:**
+現在、コードベースにはドキュメントのインジェスト、アップロード、統計取得、およびCelery/Redisを使用した非同期バッチ処理（`/batch`）に対応した機能的で高度なドキュメント管理API（`app/api/routes/documents.py`）が用意されています。しかし、`app/main.py`ではこのルーター（`documents.router`）はマウントされておらず、代わりに静的なレスポンスのみを返すモック実装の `app/api/routes/ingest.py`（`ingest.router`）が組み込まれています。
+また、`documents.py`内では `get_vector_db` の呼び出し時にデータベース種別として `"faiss"` がハードコードされており、設定（`settings`）で定義可能な内容（または将来的な他DBへの拡張性）が活かされない構成になっています。
+
+これらを解消し、本番品質のドキュメント管理APIを完全に有効化する必要があります。
+
+**タスク:**
+- [ ] `app/main.py` で `ingest.router` のインポートとマウント設定を廃止し、`app/api/routes/documents.py` の `documents.router` を `/api/v1` 配下に統合する。
+- [ ] `app/api/routes/documents.py` において、`get_vector_db` 呼び出し時の `db_type` 引数の値を `"faiss"` とハードコードするのではなく、設定オブジェクト（`settings.vector_db_type` 等）から動的に取得するように変更する。
+- [ ] `app/api/routes/documents.py` の各種エンドポイントに対する単体テストおよび統合テストを `tests/` ディレクトリ内に新規作成または拡充する。
+- [ ] ルーター統合とモック廃止に伴って発生する既存テストやCI上の影響を調査し、整合性を保つよう修正する。
