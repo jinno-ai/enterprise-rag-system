@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 7: Re-ranking サービスの RAGPipeline への統合
+
+**タイトル:** 検索結果の精度向上のための Re-ranking サービスの RAGPipeline 統合
+
+**内容:**
+現在 `app/services/reranker.py` に `Reranker` クラスおよび関連ロジックが実装され単体テストも整備されていますが、メインの検索・回答生成フローである `RAGPipeline` (`app/services/rag_pipeline.py`) に組み込まれていません。検索精度の最適化（Epic E-02 / Story 2.3）を達成するため、ハイブリッド検索等で取得した上位ドキュメントに対して Re-ranking を適用し、最も関連性の高いコンテキストに基づいて回答生成を行う統合処理が必要です。
+
+**タスク:**
+- [ ] `RAGPipeline` のコンストラクタおよび初期化フローで `Reranker` インスタンスを受け取れるように拡張する
+- [ ] `RAGPipeline.query` メソッド内のドキュメント検索処理後に `reranker.rerank` を呼び出し、検索結果を再ランキングする処理を追加する
+- [ ] 設定（`settings` や環境変数）により Re-ranking 処理の有効/無効および適用件数 (top_n) を制御できるようにする
+- [ ] `RAGPipeline` の単体テストに Re-ranking 適用時の動作検証テストを追加する
