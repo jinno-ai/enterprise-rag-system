@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 9: CacheManager（階層型キャッシュ）のRAGPipelineおよびQuery APIへの統合
+
+**タイトル:** `CacheManager`（L1: メモリ / L2: Redis）の統合によるクエリ応答の高速化とLLMコスト削減
+
+**内容:**
+現在 `app/core/cache.py` に `CacheManager` クラスが実装されており、L1（インメモリ）およびL2（Redis）による階層化キャッシュ機能が提供されていますが、`RAGPipeline`（`app/services/rag_pipeline.py`）やクエリAPI（`app/api/routes/query.py`）への組み込みが行われていません。
+そのため、同一または類似のクエリに対しても毎回高コストなベクトル検索およびLLM呼び出しが発生し、レスポンスレイテンシとAPI利用料金の増大を引き起こしています。
+
+**タスク:**
+- [ ] `app/services/rag_pipeline.py` または `app/api/routes/query.py` に `CacheManager` を依存性注入（DI）または初期化して組み込む
+- [ ] クエリ文字列、コレクション名、`top_k` などのパラメータを元に `CacheManager.generate_key()` でキャッシュキーを生成する
+- [ ] 検索・回答生成前にキャッシュを確認し、ヒット時は即座にキャッシュ済みレスポンスを返却する
+- [ ] 新規クエリの回答生成完了後、`CacheManager.set()` を用いてL1/L2キャッシュに結果を保存する
+- [ ] キャッシュ統合動作およびヒット/ミス処理の単体テストを `tests/unit` に追加する
