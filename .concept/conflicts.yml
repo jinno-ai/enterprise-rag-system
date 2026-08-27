@@ -13,3 +13,18 @@ conflicts:
     active_workaround:
       decision_key: "AUTO:ResultRanker.batch_pairing:index_based"
       summary: "MS-003（charter.yml）として修正予定。修正まで残存欠落は既知の制約"
+
+  - id: "CFLT-SUITE-001"
+    term: "RAGPipeline"
+    about: "quality_gate"
+    severity: "high"
+    nli: "contradiction"
+    items:
+      - claim: "品質ゲート INV-TEST-001: pytest 全件 green（MET-001 も '全件 green' を主張）"
+        source: ".concept/invariants.yml#INV-TEST-001 + .concept/charter.yml#MET-001"
+      - claim: "HEAD c208aa7 実測 (2026-08-28 05:29 JST): 34 failed / 956 passed / 44 skipped。dirty-tree 回収チェーン (c6ac66b→c208aa7) が持ち込んだ統合欠陥"
+        source: "pytest@HEAD c208aa7: feature_14 x20, validation_middleware x4, feature_02 x3, api_docs x2, api_routes x2, feature_07 x2, config_and_schemas x1"
+    status: "open"
+    active_workaround:
+      decision_key: ""
+      summary: "MS-004（charter.yml）として失敗群ごとに収束。解消まで HEAD はコミット可能状態ではない"

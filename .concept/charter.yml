@@ -5,7 +5,7 @@ product_goal:
   success_metrics:
     - id: "MET-001"
       name: "テストスイート健全性"
-      target: "pytest 全件 green（2026-08-28実測: 717 passed / 40 skipped / 0 failed）"
+      target: "pytest 全件 green（2026-08-28 05:29実測@HEAD c208aa7: 956 passed / 34 failed / 44 skipped — 回収コード統合の修復中、MS-004）"
     - id: "MET-002"
       name: "カバレッジ"
       target: "pytest --cov 全体 ≥11%（ゲート）。2026-08-28実測 74.74%"
@@ -52,6 +52,22 @@ milestones:
         target: "tests/unit/test_api_routes.py（バッチ用テスト追加）"
     priority: "P1"
     status: "planned"
+
+  - id: "MS-004"
+    name: "回収コード統合によるレッドテスト収束"
+    intent: "dirty-tree 回収チェーン (c6ac66b→c208aa7, 2026-08-28) が持ち込んだ統合欠陥を除去し、INV-TEST-001（全件 green）を回復する。ツリーは収束したがスイートが赤い状態はコミット可能状態ではない"
+    deliverables:
+      - "test_feature_14 (20件): batch_query の async 化への追従（await or pytest-asyncio）— INV-PIPE-002"
+      - "test_validation_middleware (4件): セキュリティ検知を 4xx 拒否に修正 — INV-SEC-001"
+      - "test_feature_02 (3件): CircuitBreaker OPEN→HALF_OPEN 遷移の修復 — INV-CB-001"
+      - "test_api_docs (2件): OpenAPI スキーマへの QueryRequest/QueryResponse 公開 — INV-API-003"
+      - "test_api_routes (2件): MS-002 受け入れテストの DI 注入修正 — INV-TEST-002"
+      - "test_feature_07 (2件) / test_config_and_schemas (1件): v1 検証経路と設定既定値の整合"
+    acceptance:
+      - type: "test"
+        target: "pytest 全件 green（現状 34 failed → 0）"
+    priority: "P1"
+    status: "active"
 
 work_policy:
   default_mode: "commit"

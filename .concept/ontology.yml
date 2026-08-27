@@ -196,7 +196,7 @@ canonical_terms:
     lifecycle: ["closed", "open", "half_open"]
     related_terms: ["QueryCache"]
     evidence:
-      - source: "app/core/circuit_breaker.py#L77"
+      - source: "app/core/circuit_breaker.py#L90"
         quote: "class CircuitBreaker:"
 
   QueryCache:
@@ -210,7 +210,7 @@ canonical_terms:
       excludes: ["ベクトルインデックスのキャッシュ"]
     related_terms: ["RAGPipeline"]
     evidence:
-      - source: "app/core/cache.py#L24"
+      - source: "app/core/cache.py#L476"
         quote: "class QueryCache:"
 
   AudioTranscriptionService:

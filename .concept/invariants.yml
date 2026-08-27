@@ -163,18 +163,93 @@ invariants:
     related_terms: ["CircuitBreaker"]
     status: "draft"
     strength: "hard"
-    statement: "CircuitBreaker は失敗閾値超過で open となり、回復判定まで呼び出しを拒否する"
-    rationale: "障害連鎖の遮断が本質"
+    statement: "CircuitBreaker は失敗閾値超過で open となり、回復タイムアウト経過後は half_open に遷移して試行を限定する"
+    rationale: "障害連鎖の遮断と回復試行の段階的再開が本質。統合実装 (8174777) は open→half_open 遷移が発生せず違反中（CFLT-SUITE-001 で追跡）"
     evidence:
-      - source: "app/core/circuit_breaker.py#L77-L95"
+      - source: "app/core/circuit_breaker.py#L90-L95"
         quote: "class CircuitBreaker: ... CircuitState"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_02.py::TestCircuitBreakerHalfOpenBehavior"
+
+  - id: "INV-CB-002"
+    related_terms: ["CircuitBreaker"]
+    status: "draft"
+    strength: "soft"
+    statement: "CircuitBreaker の公開APIは async 新base と legacy sync/decorator/registry の両方を提供する"
+    rationale: "8174777 の統合方針。既存呼び出し側（legacy）を壊さず新baseに対応する"
+    evidence:
+      - source: "app/core/circuit_breaker.py#L90-L560"
+        quote: "unified implementation supporting both new-base async API and legacy sync/decorator/registry API"
+
+  - id: "INV-CACHE-001"
+    related_terms: ["QueryCache"]
+    status: "stable"
+    strength: "soft"
+    statement: "app/core/cache は CacheManager と並存して QueryCache/get_cache レガシーAPIを提供する"
+    rationale: "88d479b の復帰方針。レガシー呼び出し側の互換性維持"
+    evidence:
+      - source: "app/core/cache.py#L476,L726"
+        quote: "class QueryCache: ... def get_cache() -> QueryCache"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_19.py"
 
   - id: "INV-TEST-001"
     related_terms: []
     status: "stable"
     strength: "soft"
-    statement: "品質ゲート: pytest 全件 green かつ --cov-fail-under=11 を満たす"
-    rationale: "コミット可能状態の定義。2026-08-28 実測: 717 passed / 40 skipped / coverage 74.74%"
+    statement: "品質ゲート: pytest 全件 green であること（カバレッジゲート ≥11% は charter MET-002 参照）"
+    rationale: "コミット可能状態の定義。2026-08-28 05:29 JST 実測@HEAD c208aa7: 956 passed / 34 failed / 44 skipped — 違反中、CFLT-SUITE-001 + MS-004 で追跡"
     evidence:
-      - source: "pytest.ini#L10"
-        quote: "--cov-fail-under=11"
+      - source: "pytest@HEAD c208aa7 (1034 collected)"
+        quote: "34 failed, 956 passed, 44 skipped"
+
+  - id: "INV-TEST-002"
+    related_terms: ["ResultRanker", "QueryRequest"]
+    status: "draft"
+    strength: "soft"
+    statement: "POST /query のテストは実DI経路（app.api.dependencies.get_rag_pipeline → request.app.state.rag_pipeline）でハンドラを検証する"
+    rationale: "app.main.get_rag_pipeline へのパッチは /query の Depends には届かない（decorator 時点で関数オブジェクト確定）。2026-08-28 実測で MS-002 受け入れテストがこの誤りで 500"
+    evidence:
+      - source: "app/api/routes/query.py#L14,L83 + tests/unit/test_api_routes.py#L13-L26"
+        quote: "from app.api.dependencies import get_rag_pipeline ... Depends(get_rag_pipeline); fixture は test_app.state.rag_pipeline のみ設定"
+
+  - id: "INV-API-003"
+    related_terms: ["QueryRequest", "RAGResponse"]
+    status: "draft"
+    strength: "hard"
+    statement: "メインアプリの OpenAPI スキーマは QueryRequest/QueryResponse モデルを含む"
+    rationale: "API 契約の自己記述。回収した docs 体制とモデル公開の不整合で現在違反中（CFLT-SUITE-001）"
+    evidence:
+      - source: "tests/unit/test_api_docs.py#L146,L192"
+        quote: "assert 'QueryRequest' in schemas, 'QueryRequest model must be defined'"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_docs.py"
+
+  - id: "INV-SEC-001"
+    related_terms: []
+    status: "draft"
+    strength: "hard"
+    statement: "ValidationMiddleware は XSS/SQLインジェクション/パストラバーサル入力を 400/422/429 で拒否し、500 を返さない"
+    rationale: "セキュリティ検知の失敗がサーバーエラーとして露呈すると、攻撃の成否判定と障害監視の両方が崩れる。現在違反中（実測 500）"
+    evidence:
+      - source: "tests/unit/test_validation_middleware.py#L192-L260"
+        quote: "assert response.status_code in [400, 422, 429] ... 実測では 500"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_validation_middleware.py"
+
+  - id: "INV-PIPE-002"
+    related_terms: ["RAGPipeline"]
+    status: "draft"
+    strength: "hard"
+    statement: "RAGPipeline.batch_query は async であり、呼び出し側は await する"
+    rationale: "回収後のpipeline契約。旧 feature_14 テスト20件が同期呼び出しのまま TypeError で失敗中（CFLT-SUITE-001）"
+    evidence:
+      - source: "app/services/rag_pipeline.py#L339 + tests/unit/test_feature_14.py#L124-L135"
+        quote: "async def batch_query(...) ... TypeError: object of type 'coroutine' has no len()"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_14.py"
