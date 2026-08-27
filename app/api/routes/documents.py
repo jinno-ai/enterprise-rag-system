@@ -13,6 +13,7 @@ from pathlib import Path
 import tempfile
 import os
 import asyncio
+import uuid
 import logging
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -64,6 +65,42 @@ class DocumentStats(BaseModel):
     total_documents: int
     total_chunks: int
     collections: List[str]
+
+
+# Batch processing models
+class DocumentCreateRequest(BaseModel):
+    """Request model for single document creation in batch"""
+    id: str = Field(..., description="Unique document identifier")
+    content: str = Field(..., description="Document text content")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata")
+
+
+class BatchIngestRequest(BaseModel):
+    """Request model for batch document ingestion"""
+    documents: List[DocumentCreateRequest] = Field(
+        ...,
+        description="List of documents to process (max 1000)",
+        max_length=1000
+    )
+    collection: str = Field("default", description="Collection name")
+    chunk_size: int = Field(1000, description="Chunk size for splitting", ge=100, le=4000)
+    chunk_overlap: int = Field(200, description="Chunk overlap", ge=0, le=500)
+
+
+class BatchIngestResponse(BaseModel):
+    """Response model for batch ingestion initiation"""
+    task_id: str = Field(..., description="Celery task ID for tracking")
+    status: str = Field(..., description="Task status")
+    total_documents: int = Field(..., description="Number of documents submitted")
+    collection: str = Field(..., description="Collection name")
+
+
+class BatchStatusResponse(BaseModel):
+    """Request model for batch processing status"""
+    task_id: str
+    status: str = Field(..., description="Task state (PENDING/PROGRESS/SUCCESS/FAILURE)")
+    result: Optional[Dict[str, Any]] = Field(None, description="Processing results if complete")
+    error: Optional[str] = Field(None, description="Error message if failed")
 
 
 @router.post("/ingest", response_model=DocumentIngestResponse)

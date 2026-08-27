@@ -190,9 +190,14 @@ class TestCircuitBreakerStateTransitions:
         # Wait for timeout
         time.sleep(1.1)
 
-        # Check state should transition to HALF_OPEN
-        current_state = cb.state
-        assert current_state == CircuitState.HALF_OPEN
+        # State is a pure read; OPEN -> HALF_OPEN happens lazily on next call
+        assert cb.state == CircuitState.OPEN
+
+        # A call after the timeout is permitted (HALF_OPEN recovery path)
+        def successful_call():
+            return "ok"
+
+        assert cb.call(successful_call) == "ok"
 
     def test_half_open_to_closed_on_successes(self):
         """Test transition from HALF_OPEN to CLOSED after success threshold"""

@@ -7,6 +7,7 @@ This module orchestrates the complete RAG workflow.
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 import time
+import openai
 from openai import AsyncOpenAI
 
 from app.core.config import get_settings
@@ -43,7 +44,7 @@ class RAGPipeline:
     def __init__(
         self,
         retriever: HybridRetriever,
-        llm_client: AsyncOpenAI,
+        llm_client: Optional[AsyncOpenAI] = None,
         llm_model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
@@ -52,7 +53,13 @@ class RAGPipeline:
         enable_circuit_breaker: bool = True
     ):
         self.retriever = retriever
-        self.llm_client = llm_client
+        if llm_client is not None:
+            self.llm_client = llm_client
+        else:
+            try:
+                self.llm_client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+            except Exception:
+                self.llm_client = None
         self.llm_model = llm_model or settings.llm_model
         self.temperature = temperature
         self.max_tokens = max_tokens
