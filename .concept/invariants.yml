@@ -1,0 +1,180 @@
+invariants:
+  - id: "INV-RANK-001"
+    related_terms: ["ResultRanker", "RAGResponse", "QueryRequest"]
+    status: "stable"
+    strength: "hard"
+    statement: "ランキング適用時、sources と retrieval_results の長さが不一致でも sources をサイレントに欠落させない"
+    rationale: "zip() ペアリングは短い方に切り詰め、応答から文書が消える。ユーザーにとっては情報の無断欠損"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L208-L231"
+        quote: "test_query_ranking_length_mismatch_keeps_all_sources ... assert len(returned_docs) == 4"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py::TestQueryRankingIntegration"
+
+  - id: "INV-RANK-002"
+    related_terms: ["ResultRanker", "RAGResponse"]
+    status: "draft"
+    strength: "soft"
+    statement: "ランキング適用時、sources は final_score 降順に並べ替えられる"
+    rationale: "ランキングが効いていることの直接的検証。現行テストは set 比較のみで順序を検証していない（要 強化）"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L233-L257"
+        quote: "test_query_ranking_aligned_lists_rank_all_sources ... assert set(returned_docs) == {...}"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py::TestQueryRankingIntegration"
+
+  - id: "INV-RANK-003"
+    related_terms: ["ResultRanker", "QueryRequest"]
+    status: "stable"
+    strength: "soft"
+    statement: "ランキング処理の失敗はクエリ自体を失敗させず、元の順序で応答する"
+    rationale: "付加機能の障害が主機能（検索回答）を巻き込まないためのフェイルセーフ"
+    evidence:
+      - source: "app/api/routes/query.py#L165-L167"
+        quote: "except Exception as ranking_error: ... using original order"
+
+  - id: "INV-ENC-001"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "hard"
+    statement: "encrypt で暗号化した内容は decrypt で元の平文に復元できる"
+    rationale: "暗号化の可逆性は機密データ保存の前提"
+    evidence:
+      - source: "tests/unit/test_feature_49.py#L38-L51"
+        quote: "test_encrypt_and_decrypt_simple_content"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_49.py"
+
+  - id: "INV-ENC-002"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "hard"
+    statement: "空コンテンツの暗号化は暗号化せずそのまま返す"
+    rationale: "空値に対する誤った暗号文生成を防ぐ"
+    evidence:
+      - source: "tests/unit/test_feature_49.py#L53-L59"
+        quote: "test_encrypt_empty_content"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_49.py"
+
+  - id: "INV-ENC-003"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "hard"
+    statement: "誤ったキーでの復号は失敗し、平文を返さない"
+    rationale: "機密性の保証。失敗時は例外（安全側）"
+    evidence:
+      - source: "tests/unit/test_feature_49.py#L71-L83"
+        quote: "test_decrypt_with_wrong_key"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_49.py"
+
+  - id: "INV-ENC-004"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "soft"
+    statement: "EncryptionService.encrypt のメソッド定義は単一である（到達不能な重複本体を持たない）"
+    rationale: "回収済み Feature 44 由来の重複本体は解消済み（AST検証: encrypt 1件、encrypt_dict は別メソッド）"
+    evidence:
+      - source: "app/core/encryption.py#L48-L160"
+        quote: "AST: EncryptionService methods = ['__init__','generate_key','encrypt','decrypt','encrypt_dict','decrypt_dict','rotate_key','is_encrypted']"
+
+  - id: "INV-API-001"
+    related_terms: ["QueryRequest"]
+    status: "stable"
+    strength: "hard"
+    statement: "API v1/v2 はバージョン分離され、無効バージョンは 404 を返す"
+    rationale: "後方互換性とバージョン隔離の保証"
+    evidence:
+      - source: "tests/unit/test_feature_07.py#L116-L133"
+        quote: "test_api_version_isolation ... test_invalid_version_returns_404"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_07.py"
+
+  - id: "INV-API-002"
+    related_terms: ["RAGPipeline", "RAGResponse"]
+    status: "draft"
+    strength: "hard"
+    statement: "バッチクエリはクエリ数と同数の RAGResponse を返す"
+    rationale: "バッチ応答の対応関係の保証"
+    evidence:
+      - source: "tests/unit/test_rag_pipeline.py#L106-L119"
+        quote: "test_rag_pipeline_batch_query"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py"
+
+  - id: "INV-PIPE-001"
+    related_terms: ["RAGPipeline"]
+    status: "stable"
+    strength: "hard"
+    statement: "検索結果がゼロでもクエリは例外で失敗しない"
+    rationale: "空結果は正常系。UI/上位呼び出しが崩れない前提"
+    evidence:
+      - source: "tests/unit/test_rag_pipeline.py#L89-L104"
+        quote: "test_rag_pipeline_no_results"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py"
+
+  - id: "INV-GIT-001"
+    related_terms: []
+    status: "stable"
+    strength: "hard"
+    statement: "カバレッジ成果物（.coverage, coverage.json, htmlcov/）は git 管理対象としない"
+    rationale: "テスト実行のたびにワークツリーが汚染され、停滞の温床になる（docs/dirty-tree-investigation.md 参照）"
+    evidence:
+      - source: ".gitignore#L5-L9"
+        quote: ".coverage / .coverage.* / coverage.json / htmlcov/"
+    checks:
+      - type: "command"
+        target: "git ls-files | grep -cE '^\\.coverage|^coverage\\.json|^htmlcov/' == 0"
+
+  - id: "INV-ENV-001"
+    related_terms: ["Settings"]
+    status: "stable"
+    strength: "hard"
+    statement: "Settings は OPENAI_API_KEY 環境変数なしには生成できない（テスト時は dummy でよい）"
+    rationale: "設定契約の明示。未設定ではコレクション段階で ValidationError になる（実測 2026-08-28）"
+    evidence:
+      - source: "app/core/config.py#L17"
+        quote: "openai_api_key: str = Field(..., env=\"OPENAI_API_KEY\")"
+
+  - id: "INV-ROUTE-001"
+    related_terms: []
+    status: "stable"
+    strength: "soft"
+    statement: "ヘルスチェック (/health) は初期化状態によらず 200 と status を返す"
+    rationale: "生存確認の安定供給"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L28-L37"
+        quote: "test_health_endpoint ... assert data[\"status\"] == \"healthy\""
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py"
+
+  - id: "INV-CB-001"
+    related_terms: ["CircuitBreaker"]
+    status: "draft"
+    strength: "hard"
+    statement: "CircuitBreaker は失敗閾値超過で open となり、回復判定まで呼び出しを拒否する"
+    rationale: "障害連鎖の遮断が本質"
+    evidence:
+      - source: "app/core/circuit_breaker.py#L77-L95"
+        quote: "class CircuitBreaker: ... CircuitState"
+
+  - id: "INV-TEST-001"
+    related_terms: []
+    status: "stable"
+    strength: "soft"
+    statement: "品質ゲート: pytest 全件 green かつ --cov-fail-under=11 を満たす"
+    rationale: "コミット可能状態の定義。2026-08-28 実測: 717 passed / 40 skipped / coverage 74.74%"
+    evidence:
+      - source: "pytest.ini#L10"
+        quote: "--cov-fail-under=11"

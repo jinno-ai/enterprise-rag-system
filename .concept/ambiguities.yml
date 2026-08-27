@@ -1,0 +1,52 @@
+ambiguities:
+  - id: "AMB-AUTO-001"
+    term: "Settings"
+    topic: "lint コマンドの不在"
+    severity: "low"
+    uncertainty: 0.3
+    candidates:
+      - "lint ゲートなしで運用する"
+      - "ruff 等を導入する"
+    missing_info:
+      - "pyproject.toml / setup.cfg / .flake8 等の lint 設定がリポジトリに存在しない"
+    auto_decision:
+      status: "applied"
+      decision_key: "AUTO:autopilot.lint:no_lint_gate"
+      chosen: "lint ゲートなし。test ゲート（pytest）のみで品質を担保"
+      policy: "locality + industry_convention"
+      confidence_auto: 0.8
+      decided_at_run: "2026-08-27T19:37:37Z"
+      expires_after_runs: 20
+      revert_triggers:
+        - "lint 設定ファイルが追加された"
+    last_touched_run: "2026-08-27T19:37:37Z"
+    evidence:
+      - source: "autopilot.yml"
+        quote: "lint: echo \"no lint configured\""
+
+  - id: "AMB-AUTO-002"
+    term: "ResultRanker"
+    topic: "バッチランキング残存欠落（query.py:229）の修正方式"
+    severity: "high"
+    uncertainty: 0.4
+    candidates:
+      - "単一クエリ経路と同じ index ベース・ペアリングをバッチ経路にも適用"
+      - "ペアリング処理を helper 関数として両経路で共有"
+    missing_info:
+      - "共有 helper 化が他経路に与える影響の評価は未実施"
+    linked_conflicts: ["CFLT-RANK-001"]
+    auto_decision:
+      status: "applied"
+      decision_key: "AUTO:ResultRanker.batch_pairing:index_based"
+      chosen: "最小差分の index ベース・ペアリング適用（helper 共有化は後続リファクタで検討）"
+      policy: "reversibility + blast_radius_min"
+      confidence_auto: 0.75
+      decided_at_run: "2026-08-27T19:37:37Z"
+      expires_after_runs: 20
+      revert_triggers:
+        - "primary_evidence_contradiction"
+        - "バッチ経路の挙動を検証するテストが追加され矛盾した場合"
+    last_touched_run: "2026-08-27T19:37:37Z"
+    evidence:
+      - source: "app/api/routes/query.py#L226-L232"
+        quote: "for source, ret_result in zip(result.sources, result.retrieval_results):"

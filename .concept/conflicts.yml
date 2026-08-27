@@ -1,0 +1,15 @@
+conflicts:
+  - id: "CFLT-RANK-001"
+    term: "ResultRanker"
+    about: "error_handling"
+    severity: "high"
+    nli: "contradiction"
+    items:
+      - claim: "ランキング適用時、sources/retrieval_results 長不一致でも sources を欠落させない（INV-RANK-001, 単一クエリ経路は修正済み commit 1544a47）"
+        source: ".concept/invariants.yml#INV-RANK-001"
+      - claim: "バッチクエリ経路は今も zip() ペアリングであり、sources > retrieval_results のとき応答から sources が消える"
+        source: "code:app/api/routes/query.py#L229"
+    status: "open"
+    active_workaround:
+      decision_key: "AUTO:ResultRanker.batch_pairing:index_based"
+      summary: "MS-003（charter.yml）として修正予定。修正まで残存欠落は既知の制約"
