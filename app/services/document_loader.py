@@ -29,6 +29,17 @@ try:
 except ImportError:
     TRANSCRIPTION_AVAILABLE = False
 
+# Try to import encryption service
+try:
+    from app.core.encryption import EncryptionService, EncryptionError, get_encryption_service
+    ENCRYPTION_AVAILABLE = True
+except ImportError:
+    ENCRYPTION_AVAILABLE = False
+    # Define stubs for type checking
+    EncryptionService = None  # type: ignore
+    EncryptionError = None  # type: ignore
+    get_encryption_service = None  # type: ignore
+
 
 @dataclass
 class Document:
@@ -36,41 +47,143 @@ class Document:
     content: str
     metadata: Dict[str, Any]
     doc_id: Optional[str] = None
-    
+    encrypted: bool = False
+
     def __post_init__(self):
         """Generate document ID if not provided"""
         if not self.doc_id:
             self.doc_id = self._generate_id()
-    
+
     def _generate_id(self) -> str:
         """Generate unique document ID based on content"""
         content_hash = hashlib.sha256(self.content.encode()).hexdigest()
         source = self.metadata.get('source', 'unknown')
         return f"{source}_{content_hash[:16]}"
 
+    def encrypt_content(self, encryption_service: Optional[EncryptionService] = None) -> 'Document':
+        """
+        Encrypt the document content.
+
+        Args:
+            encryption_service: Optional EncryptionService instance.
+                               If not provided, uses singleton instance.
+
+        Returns:
+            Document with encrypted content
+
+        Raises:
+            ImportError: If encryption is not available
+            EncryptionError: If encryption fails
+        """
+        if not ENCRYPTION_AVAILABLE:
+            raise ImportError(
+                "Encryption requires cryptography library. "
+                "Ensure app.core.encryption is available."
+            )
+
+        if encryption_service is None:
+            encryption_service = get_encryption_service()
+
+        try:
+            encrypted_content = encryption_service.encrypt(self.content)
+        except EncryptionError as e:
+            logger.error(f"Failed to encrypt document {self.doc_id}: {e}")
+            raise
+
+        # Return new Document with encrypted content
+        return Document(
+            content=encrypted_content,
+            metadata=self.metadata.copy(),
+            doc_id=self.doc_id,
+            encrypted=True
+        )
+
+    def decrypt_content(self, encryption_service: Optional[EncryptionService] = None) -> 'Document':
+        """
+        Decrypt the document content.
+
+        Args:
+            encryption_service: Optional EncryptionService instance.
+                               If not provided, uses singleton instance.
+
+        Returns:
+            Document with decrypted content
+
+        Raises:
+            ImportError: If encryption is not available
+            EncryptionError: If decryption fails
+        """
+        if not ENCRYPTION_AVAILABLE:
+            raise ImportError(
+                "Decryption requires cryptography library. "
+                "Ensure app.core.encryption is available."
+            )
+
+        if encryption_service is None:
+            encryption_service = get_encryption_service()
+
+        try:
+            decrypted_content = encryption_service.decrypt(self.content)
+        except EncryptionError as e:
+            logger.error(f"Failed to decrypt document {self.doc_id}: {e}")
+            raise
+
+        # Return new Document with decrypted content
+        return Document(
+            content=decrypted_content,
+            metadata=self.metadata.copy(),
+            doc_id=self.doc_id,
+            encrypted=False
+        )
+
 
 class DocumentLoader:
     """Base class for document loaders"""
-    
+
     @staticmethod
-    def load_text_file(file_path: str) -> Document:
-        """Load a plain text file"""
+    def load_text_file(
+        file_path: str,
+        encrypt: bool = False,
+        encryption_service: Optional[EncryptionService] = None
+    ) -> Document:
+        """
+        Load a plain text file
+
+        Args:
+            file_path: Path to the text file
+            encrypt: Whether to encrypt the content after loading
+            encryption_service: Optional EncryptionService instance
+
+        Returns:
+            Document with (optionally encrypted) content
+        """
         path = Path(file_path)
-        
+
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        
+
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
-        
+
         metadata = {
             'source': str(path),
             'filename': path.name,
             'file_type': 'txt',
             'size_bytes': path.stat().st_size
         }
-        
-        return Document(content=content, metadata=metadata)
+
+        doc = Document(content=content, metadata=metadata)
+
+        # Encrypt if requested
+        if encrypt and ENCRYPTION_AVAILABLE:
+            if encryption_service is None:
+                encryption_service = EncryptionService()
+            doc = doc.encrypt_content(encryption_service)
+            logger.info(f"Loaded and encrypted: {path.name}")
+        elif encrypt and not ENCRYPTION_AVAILABLE:
+            logger.warning("Encryption requested but not available, loading without encryption")
+
+        return doc
     
     @staticmethod
     def load_pdf(file_path: str) -> List[Document]:
@@ -193,9 +306,25 @@ class DocumentLoader:
         file_extensions: Optional[List[str]] = None,
         recursive: bool = True,
         transcribe_audio: bool = False,
-        audio_model_size: str = "base"
+        audio_model_size: str = "base",
+        encrypt: bool = False,
+        encryption_service: Optional[EncryptionService] = None
     ) -> List[Document]:
-        """Load all documents from a directory"""
+        """
+        Load all documents from a directory
+
+        Args:
+            directory_path: Path to the directory
+            file_extensions: List of file extensions to load
+            recursive: Whether to search recursively
+            transcribe_audio: Whether to transcribe audio files
+            audio_model_size: Whisper model size for transcription
+            encrypt: Whether to encrypt document contents
+            encryption_service: Optional EncryptionService instance
+
+        Returns:
+            List of Documents with (optionally encrypted) content
+        """
         if file_extensions is None:
             file_extensions = ['.txt', '.md', '.pdf']
             if transcribe_audio:
@@ -221,6 +350,10 @@ class DocumentLoader:
         # Audio format extensions
         audio_extensions = {'.mp3', '.wav', '.mp4', '.m4a', '.webm', '.mpga', '.mpeg'}
 
+        # Initialize encryption service if needed
+        if encrypt and ENCRYPTION_AVAILABLE and encryption_service is None:
+            encryption_service = EncryptionService()
+
         # Load each file
         for file_path in files:
             try:
@@ -232,6 +365,8 @@ class DocumentLoader:
                             str(file_path),
                             model_size=audio_model_size
                         )
+                        if encrypt and ENCRYPTION_AVAILABLE:
+                            doc = doc.encrypt_content(encryption_service)
                         documents.append(doc)
                     else:
                         logger.warning(
@@ -240,12 +375,20 @@ class DocumentLoader:
                         )
                 elif ext == '.pdf':
                     docs = DocumentLoader.load_pdf(str(file_path))
+                    if encrypt and ENCRYPTION_AVAILABLE:
+                        docs = [doc.encrypt_content(encryption_service) for doc in docs]
                     documents.extend(docs)
                 elif ext == '.md':
                     doc = DocumentLoader.load_markdown(str(file_path))
+                    if encrypt and ENCRYPTION_AVAILABLE:
+                        doc = doc.encrypt_content(encryption_service)
                     documents.append(doc)
                 elif ext == '.txt':
-                    doc = DocumentLoader.load_text_file(str(file_path))
+                    doc = DocumentLoader.load_text_file(
+                        str(file_path),
+                        encrypt=encrypt,
+                        encryption_service=encryption_service
+                    )
                     documents.append(doc)
 
                 logger.debug(f"Loaded: {file_path.name}")

@@ -51,6 +51,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **Query Autocorrect** - Automatic spelling correction and query suggestion
   - Fuzzy matching for typo detection
   - Domain-specific term preservation
+  - **Query Result Ranking** - Advanced learning-to-rank for intelligent result ordering with multiple strategies (linear, exponential, RRF)
   - **Document Deduplication** - Automatic detection and removal of duplicate documents using content hashing or similarity matching
 
 - **⚡ Performance Optimized**
@@ -67,6 +68,7 @@ Modern enterprises face critical challenges in knowledge management:
   - Answer relevancy scoring (RAGAS metrics)
   - Cost tracking per query
   - **Performance metrics collection** - Automatic tracking of query execution with percentiles (p50, p95, p99)
+  - **Enhanced API Documentation Generator** - Automatic OpenAPI schema generation, markdown documentation export, and comprehensive endpoint summaries
 
 - **🔒 Enterprise-Ready**
   - API rate limiting (per-key and IP-based)
@@ -80,6 +82,7 @@ Modern enterprises face critical challenges in knowledge management:
   - **IP-based rate limiting** with proxy header support
   - **PostgreSQL connection pooling** with asyncpg for production workloads
   - **Request ID tracking** for distributed tracing and debugging
+  - **Document Encryption** - Fernet symmetric encryption for sensitive document content with key management and rotation support
   - **Webhook notifications** for document processing events
   - **Document Export** - Export documents in PDF, DOCX, and TXT formats with metadata preservation
   - **Multi-Language Support** - Language detection and multilingual query processing for 15+ languages
@@ -785,6 +788,90 @@ curl -O http://localhost:8000/api/v1/documents/export/my_document.pdf
 
 **Note**: The export feature gracefully handles missing optional libraries. If reportlab or python-docx are not installed, PDF and DOCX export will be disabled with clear error messages. TXT export is always available.
 
+#### Document Encryption
+
+The Document Encryption feature provides secure encryption for sensitive document content using Fernet symmetric encryption (AES-128-CBC with HMAC). This ensures that sensitive data remains protected at rest.
+
+**Generate Encryption Key:**
+```python
+from app.core.encryption import EncryptionService
+
+# Generate a new key for production use
+key = EncryptionService.generate_key()
+print(f"Set this key in your .env file: ENCRYPTION_KEY={key}")
+```
+
+**Encrypt Document Content:**
+```python
+from app.services.document_loader import DocumentLoader
+from app.core.encryption import EncryptionService
+
+# Initialize encryption service
+encryption_service = EncryptionService()
+
+# Load and encrypt a document
+doc = DocumentLoader.load_text_file(
+    "sensitive_document.txt",
+    encrypt=True,
+    encryption_service=encryption_service
+)
+
+# Document content is now encrypted
+print(doc.encrypted)  # True
+print(doc.content)    # 'gAAAAA...' (encrypted)
+```
+
+**Decrypt Document Content:**
+```python
+# Decrypt when needed
+decrypted_doc = doc.decrypt_content(encryption_service)
+print(decrypted_doc.content)  # Original content
+```
+
+**Encrypt Metadata Fields:**
+```python
+# Encrypt specific fields in metadata
+metadata = {
+    "title": "Public Document",
+    "ssn": "123-45-6789",
+    "credit_card": "4111-1111-1111-1111"
+}
+
+encrypted_metadata = encryption_service.encrypt_dict(
+    metadata,
+    fields=["ssn", "credit_card"]
+)
+
+# Result: {'title': 'Public Document', 'ssn': 'gAAAAA...', 'credit_card': 'gAAAAA...'}
+```
+
+**Key Rotation:**
+```python
+# Rotate encryption keys
+new_service = EncryptionService(key=new_key)
+rotated_content = new_service.rotate_key(old_key, encrypted_content)
+```
+
+**Environment Setup:**
+```bash
+# Add to your .env file
+ENCRYPTION_KEY=your_generated_fernet_key_here
+```
+
+**Features:**
+- Fernet symmetric encryption (AES-128-CBC with HMAC)
+- URL-safe base64 encoding
+- Key rotation support
+- Backward compatibility with non-encrypted documents
+- Automatic detection of encrypted content
+- Dictionary field encryption for metadata
+
+**Security Notes:**
+- Always set `ENCRYPTION_KEY` in production environment
+- Store encryption keys securely (e.g., AWS KMS, HashiCorp Vault)
+- Never commit encryption keys to version control
+- Key rotation is recommended periodically
+
 #### Document Chunking Strategies
 
 The Enterprise RAG System provides multiple document chunking strategies optimized for different use cases. Proper chunking is critical for RAG performance as it affects retrieval accuracy and context preservation.
@@ -1001,6 +1088,82 @@ curl -X POST http://localhost:8000/api/v1/query/ \
 - ⚡ **Better UX**: Users don't need to manually correct their queries
 - 🔧 **Zero Configuration**: Works out-of-the-box with common misspellings
 - 🏢 **Enterprise-Ready**: Domain-specific term preservation for technical vocabulary
+
+#### Query Result Ranking API
+
+The Query Result Ranking feature uses advanced learning-to-rank techniques to optimize result ordering based on multiple relevance signals, improving search quality and user satisfaction.
+
+**Basic Usage (Default Linear Ranking):**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "remote work policy",
+    "enable_ranking": true,
+    "top_k": 5
+  }'
+```
+
+**Exponential Ranking (Amplifies Score Differences):**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "remote work policy",
+    "enable_ranking": true,
+    "ranking_strategy": "exponential",
+    "top_k": 5
+  }'
+```
+
+**Reciprocal Rank Fusion (RRF):**
+```bash
+curl -X POST http://localhost:8000/api/v1/query/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "remote work policy",
+    "enable_ranking": true,
+    "ranking_strategy": "rrf",
+    "top_k": 5
+  }'
+```
+
+**How It Works:**
+
+1. **Multi-Feature Scoring**: Combines multiple relevance signals
+   - **Semantic Score** (60%): Vector similarity between query and document
+   - **Keyword Score** (30%): BM25 exact match score
+   - **Freshness Score** (10%): Recency boost based on document timestamp
+   - **Query Affinity** (+10%): Term overlap between query and document
+
+2. **Ranking Strategies**:
+   - **Linear** (default): Balanced combination of all features
+   - **Exponential**: Amplifies score differences for clearer ranking
+   - **RRF**: Reciprocal Rank Fusion for robust multi-list merging
+
+3. **Diversity Promotion**: Automatically reorders results to ensure diversity
+   - Prevents too-similar documents from dominating top results
+   - Configurable similarity threshold (default: 0.3)
+   - Preserves top result while promoting diverse content
+
+4. **Freshness Boosting**: Prioritizes recent documents
+   - Exponential decay based on document age
+   - Configurable decay period (default: 365 days)
+   - Neutral score for documents without timestamps
+
+**Parameters:**
+- `enable_ranking` (optional): Enable advanced ranking (default: `true`)
+- `ranking_strategy` (optional): Strategy to use - `linear`, `exponential`, or `rrf` (default: `linear`)
+- `query`: The user query
+- `top_k`: Number of results to return
+
+**Benefits:**
+- 🎯 **Better Relevance**: Multi-feature scoring captures more relevance signals
+- ⚡ **Flexible Strategies**: Choose ranking strategy based on use case
+- 🌈 **Improved Diversity**: Prevents result clustering and promotes variety
+- 📅 **Freshness Boost**: Recent content gets priority when available
+- 🔧 **Customizable**: Adjust feature weights and strategies per use case
+- 🏢 **Production-Ready**: Efficient ranking with minimal latency impact
 
 **Example:**
 ```bash
@@ -1834,6 +1997,85 @@ For production use:
    # Add authentication to dashboard
    import streamlit.auth
    ```
+
+---
+
+## 📚 API Documentation Generator
+
+The Enterprise RAG System includes an enhanced API documentation generator that extends FastAPI's built-in OpenAPI/Swagger documentation with additional capabilities.
+
+### Features
+
+- **Custom OpenAPI Schema**: Enhanced OpenAPI 3.0.x schema with detailed descriptions
+- **Markdown Documentation**: Automatically generated markdown documentation for all endpoints
+- **Endpoint Summaries**: Structured summaries of all API endpoints with statistics
+- **Documentation Export**: Export OpenAPI schemas and markdown docs to files
+- **Interactive Documentation**: Swagger UI and ReDoc integration
+
+### Interactive Documentation
+
+The system provides two interactive documentation interfaces:
+
+#### Swagger UI
+- **URL**: `http://localhost:8000/docs`
+- Interactive API exploration
+- Try-out functionality for all endpoints
+- Request/response examples
+- Schema validation
+
+#### ReDoc
+- **URL**: `http://localhost:8000/redoc`
+- Clean, responsive documentation layout
+- Three-panel design (navigation, content, schemas)
+- Searchable endpoint reference
+
+### Documentation API Endpoints
+
+```bash
+# Get API summary with statistics
+GET /docs-api/summary
+
+# Get markdown documentation
+GET /docs-api/markdown
+
+# Get OpenAPI schema
+GET /docs-api/openapi-schema
+
+# List all endpoints
+GET /docs-api/endpoints
+```
+
+### Usage Examples
+
+**Get API Summary**:
+```bash
+curl http://localhost:8000/docs-api/summary | jq
+```
+
+**Export Documentation**:
+```python
+from app.main import app
+from app.api.docs import APIDocumentationGenerator
+
+doc_gen = APIDocumentationGenerator(app)
+
+# Export OpenAPI schema
+doc_gen.export_openapi_json("openapi-schema.json")
+
+# Export markdown documentation
+doc_gen.export_markdown_docs("api-documentation.md")
+```
+
+**Access Interactive Documentation**:
+```bash
+# Open Swagger UI in browser
+xdg-open http://localhost:8000/docs
+
+# Or open ReDoc
+xdg-open http://localhost:8000/redoc
+```
+
+For more details, see [API Documentation](docs/api.md).
 
 ---
 

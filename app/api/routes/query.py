@@ -16,6 +16,7 @@ from app.core.rate_limit import limiter
 from app.services.streaming import create_streaming_response
 from app.services.metadata_search import MetadataSearchService, MetadataFilter, FilterOperator
 from app.services.suggestion import QuerySuggestionService, SuggestionRequest, get_suggestion_service
+from app.services.ranking import RankingConfig, RankingStrategy, rank_results
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ class QueryRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
     enable_autocorrect: bool = Field(False, description="Enable query spell correction")
     user_id: Optional[str] = Field(None, description="Optional user identifier for query tracking")
+    enable_ranking: bool = Field(True, description="Enable advanced result ranking")
+    ranking_strategy: Optional[str] = Field(None, description="Ranking strategy: linear, exponential, rrf")
 
 
 class QueryResponse(BaseModel):
@@ -53,6 +56,8 @@ class BatchQueryRequest(BaseModel):
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
     user_id: Optional[str] = Field(None, description="Optional user identifier for query tracking")
+    enable_ranking: bool = Field(True, description="Enable advanced result ranking")
+    ranking_strategy: Optional[str] = Field(None, description="Ranking strategy: linear, exponential, rrf")
 
 
 @router.post(
@@ -151,6 +156,53 @@ async def query(
             collection=query_req.collection or "default"
         )
 
+        # Apply advanced ranking if enabled
+        if request.enable_ranking and result.sources and result.retrieval_results:
+            try:
+                # Prepare results for ranking with proper indexing
+                ranking_results = []
+                for i, (source, ret_result) in enumerate(zip(result.sources, result.retrieval_results)):
+                    ranking_results.append({
+                        "document": ret_result.document,
+                        "score": source.get("relevance_score", ret_result.score),
+                        "keyword_score": ret_result.metadata.get("keyword_score", ret_result.score * 0.8),
+                        "metadata": {**ret_result.metadata, "original_index": i}
+                    })
+
+                # Create ranking configuration
+                ranking_config = None
+                if request.ranking_strategy:
+                    try:
+                        strategy = RankingStrategy(request.ranking_strategy.lower())
+                        ranking_config = RankingConfig(strategy=strategy)
+                    except ValueError:
+                        logger.warning(f"Invalid ranking strategy: {request.ranking_strategy}, using default")
+
+                # Apply ranking
+                ranked_results = rank_results(
+                    ranking_results,
+                    query=query_to_process,
+                    config=ranking_config,
+                    top_k=request.top_k
+                )
+
+                # Reorder sources based on ranking
+                ranked_sources = []
+                for ranked_item in ranked_results:
+                    original_index = ranked_item.get("metadata", {}).get("original_index")
+                    if original_index is not None and 0 <= original_index < len(result.sources):
+                        original_source = result.sources[original_index].copy()
+                        original_source["relevance_score"] = ranked_item.get("final_score", original_source.get("relevance_score", 0))
+                        ranked_sources.append(original_source)
+
+                if ranked_sources:
+                    result.sources = ranked_sources
+                    logger.info(f"Applied ranking to {len(ranked_sources)} results")
+
+            except Exception as ranking_error:
+                # Don't fail query if ranking fails
+                logger.warning(f"Result ranking failed: {ranking_error}, using original order")
+
         # Track query for future suggestions
         try:
             suggestion_service.track_query(query_req.query, query_req.user_id)
@@ -245,6 +297,53 @@ async def batch_query(
             use_hybrid=batch_req.use_hybrid,
             filter_dict=batch_req.filters
         )
+
+        # Apply ranking to each result if enabled
+        if request.enable_ranking:
+            ranking_config = None
+            if request.ranking_strategy:
+                try:
+                    strategy = RankingStrategy(request.ranking_strategy.lower())
+                    ranking_config = RankingConfig(strategy=strategy)
+                except ValueError:
+                    logger.warning(f"Invalid ranking strategy: {request.ranking_strategy}, using default")
+
+            for i, result in enumerate(results):
+                if result.sources and result.retrieval_results:
+                    try:
+                        # Prepare results for ranking
+                        ranking_results = []
+                        for source, ret_result in zip(result.sources, result.retrieval_results):
+                            ranking_results.append({
+                                "document": ret_result.document,
+                                "score": source.get("relevance_score", ret_result.score),
+                                "keyword_score": ret_result.metadata.get("keyword_score", ret_result.score * 0.8),
+                                "metadata": {**ret_result.metadata, "original_index": len(ranking_results)}
+                            })
+
+                        # Apply ranking
+                        ranked_results = rank_results(
+                            ranking_results,
+                            query=request.queries[i],
+                            config=ranking_config,
+                            top_k=request.top_k
+                        )
+
+                        # Reorder sources based on ranking
+                        ranked_sources = []
+                        for ranked_item in ranked_results:
+                            original_index = ranked_item.get("metadata", {}).get("original_index")
+                            if original_index is not None and 0 <= original_index < len(result.sources):
+                                original_source = result.sources[original_index].copy()
+                                original_source["relevance_score"] = ranked_item.get("final_score", original_source.get("relevance_score", 0))
+                                ranked_sources.append(original_source)
+
+                        if ranked_sources:
+                            result.sources = ranked_sources
+
+                    except Exception as ranking_error:
+                        # Don't fail batch if ranking one result fails
+                        logger.warning(f"Result ranking failed for query {i}: {ranking_error}, using original order")
 
         # Track all queries for future suggestions
         for query in batch_req.queries:

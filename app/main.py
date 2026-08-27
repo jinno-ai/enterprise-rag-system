@@ -28,6 +28,7 @@ from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.api.routes.v2 import router as v2_router
 from app.api.analytics import router as analytics_router
+from app.api.docs import router as docs_router, get_documentation_generator
 from app.middleware.compression import CompressionMiddleware
 
 
@@ -328,6 +329,12 @@ app.include_router(v2_router)
 
 # Analytics API routes
 app.include_router(analytics_router)
+
+# Documentation API routes
+app.include_router(docs_router)
+
+# Initialize enhanced documentation
+get_documentation_generator(app)
 
 
 @app.get("/", tags=["Health"])
