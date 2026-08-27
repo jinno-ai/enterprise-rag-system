@@ -157,3 +157,94 @@ class TestAPIModels:
         )
         assert len(req.queries) == 2
         assert req.top_k == 10
+
+
+def _make_retrieval_result(document: str, score: float, metadata=None):
+    """Build a retrieval-result-like object matching RAGResponse structure"""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        document=document, score=score, metadata=metadata or {}
+    )
+
+
+def _make_rag_response(sources, retrieval_results):
+    """Build a RAGResponse-like object as returned by pipeline.query"""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        answer="test answer",
+        sources=sources,
+        confidence=0.9,
+        latency_ms=10,
+        tokens_used=100,
+        retrieval_results=retrieval_results,
+    )
+
+
+class TestQueryRankingIntegration:
+    """Regression tests for the ranking integration in POST /query"""
+
+    def _post_query(self, client, pipeline_result):
+        from unittest.mock import MagicMock
+
+        pipeline = MagicMock()
+        pipeline.query.return_value = pipeline_result
+
+        suggestion = MagicMock()
+
+        with patch("app.main.get_rag_pipeline", return_value=pipeline), \
+             patch("app.services.suggestion.get_suggestion_service", return_value=suggestion):
+            response = client.post(
+                "/api/v1/query/",
+                json={"query": "company policy", "top_k": 10}
+            )
+        return response
+
+    def test_query_ranking_length_mismatch_keeps_all_sources(self, client):
+        """Sources longer than retrieval_results must not be silently dropped
+
+        The old zip()-based pairing truncated to the shorter list, so
+        sources without a paired retrieval result vanished from the response.
+        Documents are deliberately dissimilar so promote_diversity keeps them.
+        """
+        sources = [
+            {"document": "vacation policy", "relevance_score": 0.9},
+            {"document": "security guidelines", "relevance_score": 0.8},
+            {"document": "payroll calendar", "relevance_score": 0.7},
+            {"document": "office floor plan", "relevance_score": 0.6},
+        ]
+        retrieval_results = [
+            _make_retrieval_result("vacation policy content", 0.9),
+            _make_retrieval_result("security guidelines content", 0.8),
+        ]
+
+        response = self._post_query(client, _make_rag_response(sources, retrieval_results))
+
+        assert response.status_code == 200
+        returned_docs = [s["document"] for s in response.json()["sources"]]
+        assert len(returned_docs) == 4
+        assert set(returned_docs) == {
+            "vacation policy", "security guidelines",
+            "payroll calendar", "office floor plan",
+        }
+
+    def test_query_ranking_aligned_lists_rank_all_sources(self, client):
+        """1:1 sources/retrieval_results still returns every source, ranked"""
+        sources = [
+            {"document": "low result", "relevance_score": 0.2},
+            {"document": "high result", "relevance_score": 0.95},
+            {"document": "middle result", "relevance_score": 0.6},
+        ]
+        retrieval_results = [
+            _make_retrieval_result("low content", 0.2),
+            _make_retrieval_result("high content", 0.95),
+            _make_retrieval_result("middle content", 0.6),
+        ]
+
+        response = self._post_query(client, _make_rag_response(sources, retrieval_results))
+
+        assert response.status_code == 200
+        returned_docs = [s["document"] for s in response.json()["sources"]]
+        assert len(returned_docs) == 3
+        assert set(returned_docs) == {"low result", "high result", "middle result"}

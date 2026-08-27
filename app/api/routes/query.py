@@ -159,15 +159,28 @@ async def query(
         # Apply advanced ranking if enabled
         if request.enable_ranking and result.sources and result.retrieval_results:
             try:
-                # Prepare results for ranking with proper indexing
+                # Prepare results for ranking with proper indexing.
+                # Iterate over sources (not zip) so a length mismatch with
+                # retrieval_results never silently drops sources from the response.
                 ranking_results = []
-                for i, (source, ret_result) in enumerate(zip(result.sources, result.retrieval_results)):
-                    ranking_results.append({
-                        "document": ret_result.document,
-                        "score": source.get("relevance_score", ret_result.score),
-                        "keyword_score": ret_result.metadata.get("keyword_score", ret_result.score * 0.8),
-                        "metadata": {**ret_result.metadata, "original_index": i}
-                    })
+                for i, source in enumerate(result.sources):
+                    ret_result = result.retrieval_results[i] if i < len(result.retrieval_results) else None
+                    if ret_result is not None:
+                        ranking_results.append({
+                            "document": ret_result.document,
+                            "score": source.get("relevance_score", ret_result.score),
+                            "keyword_score": ret_result.metadata.get("keyword_score", ret_result.score * 0.8),
+                            "metadata": {**ret_result.metadata, "original_index": i}
+                        })
+                    else:
+                        # No paired retrieval result: rank from source data alone
+                        score = source.get("relevance_score", 0.0)
+                        ranking_results.append({
+                            "document": source.get("document", ""),
+                            "score": score,
+                            "keyword_score": score * 0.8,
+                            "metadata": {"original_index": i}
+                        })
 
                 # Create ranking configuration
                 ranking_config = None

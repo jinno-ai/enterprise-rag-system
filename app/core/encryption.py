@@ -144,44 +144,6 @@ class EncryptionService:
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
             raise EncryptionError(f"Failed to encrypt content: {e}")
-        """
-        Encrypt string content.
-
-        Args:
-            content: Plain text content to encrypt
-
-        Returns:
-            Encrypted content (URL-safe base64 encoded string)
-
-        Raises:
-            EncryptionError: If encryption fails
-
-        Example:
-            >>> service = EncryptionService()
-            >>> encrypted = service.encrypt("sensitive data")
-            >>> print(encrypted)  # 'gAAAAABh...'
-        """
-        if not content:
-            logger.warning("Attempted to encrypt empty content")
-            return content
-
-        try:
-            # Convert to bytes if needed
-            if isinstance(content, str):
-                content_bytes = content.encode('utf-8')
-            else:
-                content_bytes = content
-
-            # Encrypt and decode to string
-            encrypted_bytes = self.fernet.encrypt(content_bytes)
-            encrypted_str = encrypted_bytes.decode('utf-8')
-
-            logger.debug(f"Successfully encrypted {len(content)} bytes")
-            return encrypted_str
-
-        except Exception as e:
-            logger.error(f"Encryption failed: {e}")
-            raise EncryptionError(f"Failed to encrypt content: {e}")
 
     def decrypt(self, encrypted_content: str) -> str:
         """
