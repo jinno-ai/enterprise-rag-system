@@ -89,8 +89,13 @@ class APIDocumentationGenerator:
             # Add tags documentation
             openapi_schema["tags"] = self._get_tags_documentation()
 
-            # Add components for common schemas
-            openapi_schema["components"] = self._get_components_schemas()
+            # Add components for common schemas.
+            # Merge rather than replace: get_openapi() already populated
+            # components.schemas from the routes' request/response models,
+            # and overwriting it would leave every $ref dangling.
+            components = openapi_schema.setdefault("components", {})
+            for key, value in self._get_components_schemas().items():
+                components.setdefault(key, {}).update(value)
 
             # Add security schemes
             if self.config.include_auth_docs:
