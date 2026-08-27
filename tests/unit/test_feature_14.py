@@ -61,44 +61,64 @@ def client():
     test_app = FastAPI()
     test_app.include_router(query_router, prefix="/api/v1")
 
-    # Mock the RAG pipeline dependency
-    def mock_get_rag_pipeline():
-        pipeline = Mock()
+    pipeline = Mock()
 
-        def mock_batch_query(questions, **kwargs):
-            # Return the same number of responses as questions
-            return [
-                RAGResponse(
-                    answer=f"Answer for question {i+1}",
-                    sources=[],
-                    confidence=0.8,
-                    latency_ms=100,
-                    tokens_used=50,
-                    retrieval_results=[]
-                )
-                for i in range(len(questions))
-            ]
+    async def mock_batch_query(questions, **kwargs):
+        # Return the same number of responses as questions
+        return [
+            RAGResponse(
+                answer=f"Answer for question {i+1}",
+                sources=[],
+                confidence=0.8,
+                latency_ms=100,
+                tokens_used=50,
+                retrieval_results=[]
+            )
+            for i in range(len(questions))
+        ]
 
-        pipeline.query = Mock(return_value=RAGResponse(
+    async def mock_query(question, **kwargs):
+        return RAGResponse(
             answer="Test answer",
             sources=[],
             confidence=0.8,
             latency_ms=100,
             tokens_used=50,
             retrieval_results=[]
-        ))
-        pipeline.batch_query = mock_batch_query
+        )
+
+    pipeline.query = mock_query
+    pipeline.batch_query = mock_batch_query
+    # Routes resolve the pipeline via request.app.state.rag_pipeline
+    test_app.state.rag_pipeline = pipeline
+
+    def mock_get_rag_pipeline():
         return pipeline
 
     with patch('app.main.get_rag_pipeline', mock_get_rag_pipeline):
         yield TestClient(test_app)
 
 
+def configure_llm_mock(mock_openai, llm_response):
+    """Point the pipeline's AsyncOpenAI client at a fake completion response"""
+    response = Mock(
+        choices=[Mock(message=Mock(content=llm_response['answer']))],
+        usage=Mock(
+            total_tokens=llm_response['tokens_used'],
+            prompt_tokens=10,
+            completion_tokens=10
+        )
+    )
+    mock_openai.AsyncOpenAI.return_value.chat.completions.create = AsyncMock(
+        return_value=response
+    )
+
+
 class TestBatchQueryPipeline:
     """Test suite for batch query pipeline functionality"""
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_basic(
+    async def test_batch_query_basic(
         self,
         mock_openai,
         mock_retriever,
@@ -108,17 +128,14 @@ class TestBatchQueryPipeline:
         """Test basic batch query processing with multiple questions"""
         # Setup mocks
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         # Create pipeline
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         # Execute batch query
         questions = ["What is AI?", "Explain machine learning", "What is deep learning?"]
-        responses = pipeline.batch_query(questions)
+        responses = await pipeline.batch_query(questions)
 
         # Assertions
         assert len(responses) == 3
@@ -126,17 +143,17 @@ class TestBatchQueryPipeline:
         assert all(r.answer == mock_llm_response['answer'] for r in responses)
         assert mock_retriever.retrieve.call_count == 3
 
-    def test_batch_query_empty_list(self, mock_retriever):
+    async def test_batch_query_empty_list(self, mock_retriever):
         """Test batch query with empty question list"""
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
-        responses = pipeline.batch_query([])
+        responses = await pipeline.batch_query([])
 
         assert responses == []
         mock_retriever.retrieve.assert_not_called()
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_single_question(
+    async def test_batch_query_single_question(
         self,
         mock_openai,
         mock_retriever,
@@ -145,20 +162,17 @@ class TestBatchQueryPipeline:
     ):
         """Test batch query with single question (edge case)"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
-        responses = pipeline.batch_query(["Single question?"])
+        responses = await pipeline.batch_query(["Single question?"])
 
         assert len(responses) == 1
         assert isinstance(responses[0], RAGResponse)
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_with_no_results(
+    async def test_batch_query_with_no_results(
         self,
         mock_openai,
         mock_retriever
@@ -169,14 +183,14 @@ class TestBatchQueryPipeline:
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         questions = ["Question 1?", "Question 2?", "Question 3?"]
-        responses = pipeline.batch_query(questions)
+        responses = await pipeline.batch_query(questions)
 
         assert len(responses) == 3
         assert all("couldn't find any relevant information" in r.answer.lower() for r in responses)
         assert all(r.confidence == 0.0 for r in responses)
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_with_error_handling(
+    async def test_batch_query_with_error_handling(
         self,
         mock_openai,
         mock_retriever,
@@ -186,22 +200,22 @@ class TestBatchQueryPipeline:
         # First query succeeds, second fails, third succeeds
         call_count = [0]
 
-        def side_effect(*args, **kwargs):
+        async def side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 2:
                 raise Exception("Simulated LLM error")
             return Mock(
                 choices=[Mock(message=Mock(content="Success answer"))],
-                usage=Mock(total_tokens=100)
+                usage=Mock(total_tokens=100, prompt_tokens=10, completion_tokens=10)
             )
 
-        mock_openai.chat.completions.create = Mock(side_effect=side_effect)
+        mock_openai.AsyncOpenAI.return_value.chat.completions.create = AsyncMock(side_effect=side_effect)
         mock_retriever.retrieve.return_value = sample_retrieval_results
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         questions = ["Question 1?", "Question 2?", "Question 3?"]
-        responses = pipeline.batch_query(questions)
+        responses = await pipeline.batch_query(questions)
 
         assert len(responses) == 3
         assert responses[0].answer == "Success answer"
@@ -209,7 +223,7 @@ class TestBatchQueryPipeline:
         assert responses[2].answer == "Success answer"
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_with_different_top_k(
+    async def test_batch_query_with_different_top_k(
         self,
         mock_openai,
         mock_retriever,
@@ -218,15 +232,12 @@ class TestBatchQueryPipeline:
     ):
         """Test batch query with different top_k values"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         questions = ["Q1?", "Q2?", "Q3?"]
-        responses = pipeline.batch_query(questions, top_k=10)
+        responses = await pipeline.batch_query(questions, top_k=10)
 
         assert len(responses) == 3
         # Verify retriever was called with correct top_k
@@ -234,7 +245,7 @@ class TestBatchQueryPipeline:
             assert call.kwargs.get('top_k') == 10
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_with_hybrid_search(
+    async def test_batch_query_with_hybrid_search(
         self,
         mock_openai,
         mock_retriever,
@@ -243,15 +254,12 @@ class TestBatchQueryPipeline:
     ):
         """Test batch query with hybrid search enabled/disabled"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         questions = ["Q1?", "Q2?"]
-        responses = pipeline.batch_query(questions, use_hybrid=False)
+        responses = await pipeline.batch_query(questions, use_hybrid=False)
 
         assert len(responses) == 2
         # Verify retriever was called with use_hybrid=False
@@ -259,7 +267,7 @@ class TestBatchQueryPipeline:
             assert call.kwargs.get('use_hybrid') is False
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_response_metadata(
+    async def test_batch_query_response_metadata(
         self,
         mock_openai,
         mock_retriever,
@@ -268,15 +276,12 @@ class TestBatchQueryPipeline:
     ):
         """Test batch query responses include correct metadata"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         questions = ["Question 1?", "Question 2?"]
-        responses = pipeline.batch_query(questions)
+        responses = await pipeline.batch_query(questions)
 
         assert len(responses) == 2
         for response in responses:
@@ -286,7 +291,7 @@ class TestBatchQueryPipeline:
             assert len(response.sources) == len(sample_retrieval_results)
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_large_batch(
+    async def test_batch_query_large_batch(
         self,
         mock_openai,
         mock_retriever,
@@ -295,16 +300,13 @@ class TestBatchQueryPipeline:
     ):
         """Test batch query with a large number of questions (performance test)"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         # Test with 20 questions
         questions = [f"Question {i}?" for i in range(20)]
-        responses = pipeline.batch_query(questions)
+        responses = await pipeline.batch_query(questions)
 
         assert len(responses) == 20
         assert all(isinstance(r, RAGResponse) for r in responses)
@@ -490,7 +492,7 @@ class TestBatchQueryPerformance:
     """Test suite for batch query performance characteristics"""
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_vs_individual_queries(
+    async def test_batch_query_vs_individual_queries(
         self,
         mock_openai,
         mock_retriever,
@@ -499,20 +501,17 @@ class TestBatchQueryPerformance:
     ):
         """Compare batch query efficiency vs individual queries"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         questions = ["Q1?", "Q2?", "Q3?"]
 
         # Batch query
-        batch_responses = pipeline.batch_query(questions)
+        batch_responses = await pipeline.batch_query(questions)
 
         # Individual query
-        individual_responses = [pipeline.query(q) for q in questions]
+        individual_responses = [await pipeline.query(q) for q in questions]
 
         # Both should complete successfully with same results
         assert len(batch_responses) == len(individual_responses)
@@ -521,7 +520,7 @@ class TestBatchQueryPerformance:
         assert all(isinstance(r, RAGResponse) for r in individual_responses)
 
     @patch('app.services.rag_pipeline.openai')
-    def test_batch_query_memory_efficiency(
+    async def test_batch_query_memory_efficiency(
         self,
         mock_openai,
         mock_retriever,
@@ -530,17 +529,14 @@ class TestBatchQueryPerformance:
     ):
         """Test batch query doesn't leak memory or accumulate state"""
         mock_retriever.retrieve.return_value = sample_retrieval_results
-        mock_openai.chat.completions.create.return_value.choices = [
-            Mock(message=Mock(content=mock_llm_response['answer']))
-        ]
-        mock_openai.chat.completions.create.return_value.usage.total_tokens = mock_llm_response['tokens_used']
+        configure_llm_mock(mock_openai, mock_llm_response)
 
         pipeline = RAGPipeline(retriever=mock_retriever, llm_model='gpt-4')
 
         # Run multiple batches
         for _ in range(5):
             questions = [f"Question {i}?" for i in range(10)]
-            responses = pipeline.batch_query(questions)
+            responses = await pipeline.batch_query(questions)
             assert len(responses) == 10
 
         # Verify retriever call count matches expected

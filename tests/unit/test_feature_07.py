@@ -33,6 +33,10 @@ def client():
     # Include v2 routes
     test_app.include_router(v2_router)
 
+    # Routes resolve the pipeline via app.state (never reached when
+    # validation fails, but the dependency must not raise first)
+    test_app.state.rag_pipeline = Mock()
+
     return TestClient(test_app)
 
 

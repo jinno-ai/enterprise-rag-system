@@ -30,7 +30,9 @@ class TestSettings:
         assert settings.embedding_dimension == 1536
         assert settings.hybrid_search_alpha == 0.5
         assert settings.top_k_results == 5
-        assert settings.llm_model == "gpt-4-turbo-preview"
+        # tests/conftest.py pins LLM_MODEL=gpt-4 for the suite, so compare
+        # against the field default instead of the env-resolved instance value
+        assert Settings.model_fields["llm_model"].default == "gpt-4-turbo-preview"
         assert settings.llm_temperature == 0.7
         assert settings.llm_max_tokens == 2048
 

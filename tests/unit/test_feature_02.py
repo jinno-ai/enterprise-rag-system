@@ -347,9 +347,9 @@ class TestCircuitBreakerHalfOpenBehavior:
             time.sleep(0.1)
             return "success"
 
-        # Access state to trigger transition to HALF_OPEN
-        current_state = cb.state
-        assert current_state == CircuitState.HALF_OPEN
+        # State is a pure read; the OPEN -> HALF_OPEN transition happens
+        # lazily on the next call, which is then counted against the limit
+        assert cb.state == CircuitState.OPEN
 
         # Should allow max_calls (2 calls)
         result1 = cb.call(slow_call)
@@ -559,9 +559,13 @@ class TestCircuitBreakerStatistics:
 
         assert cb.stats.state_transitions["closed_to_open"] == 1
 
-        # Wait for timeout (OPEN -> HALF_OPEN)
+        # Wait for timeout (OPEN -> HALF_OPEN happens lazily on next call)
         time.sleep(1.1)
-        _ = cb.state  # Trigger state check
+
+        def successful_call():
+            return "success"
+
+        cb.call(successful_call)  # Triggers the transition
         assert cb.stats.state_transitions["open_to_half_open"] == 1
 
 
@@ -727,8 +731,14 @@ class TestCircuitBreakerEdgeCases:
         # Wait just past timeout
         time.sleep(0.6)
 
-        # Should transition to HALF_OPEN
-        assert cb.state == CircuitState.HALF_OPEN
+        # State is a pure read; still reports OPEN until the next call
+        assert cb.state == CircuitState.OPEN
+
+        # The next call is admitted (HALF_OPEN recovery path)
+        def successful_call():
+            return "ok"
+
+        assert cb.call(successful_call) == "ok"
 
     def test_zero_consecutive_after_reset(self):
         """Test that consecutive counters are zero after reset"""

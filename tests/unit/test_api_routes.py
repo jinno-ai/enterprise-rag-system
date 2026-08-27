@@ -186,10 +186,12 @@ class TestQueryRankingIntegration:
     """Regression tests for the ranking integration in POST /query"""
 
     def _post_query(self, client, pipeline_result):
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         pipeline = MagicMock()
-        pipeline.query.return_value = pipeline_result
+        pipeline.query = AsyncMock(return_value=pipeline_result)
+        # /api/v1/query/ resolves the pipeline via request.app.state
+        client.app.state.rag_pipeline = pipeline
 
         suggestion = MagicMock()
 
