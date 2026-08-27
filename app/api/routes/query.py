@@ -157,7 +157,7 @@ async def query(
         )
 
         # Apply advanced ranking if enabled
-        if request.enable_ranking and result.sources and result.retrieval_results:
+        if query_req.enable_ranking and result.sources and result.retrieval_results:
             try:
                 # Prepare results for ranking with proper indexing.
                 # Iterate over sources (not zip) so a length mismatch with
@@ -184,19 +184,19 @@ async def query(
 
                 # Create ranking configuration
                 ranking_config = None
-                if request.ranking_strategy:
+                if query_req.ranking_strategy:
                     try:
-                        strategy = RankingStrategy(request.ranking_strategy.lower())
+                        strategy = RankingStrategy(query_req.ranking_strategy.lower())
                         ranking_config = RankingConfig(strategy=strategy)
                     except ValueError:
-                        logger.warning(f"Invalid ranking strategy: {request.ranking_strategy}, using default")
+                        logger.warning(f"Invalid ranking strategy: {query_req.ranking_strategy}, using default")
 
                 # Apply ranking
                 ranked_results = rank_results(
                     ranking_results,
                     query=query_to_process,
                     config=ranking_config,
-                    top_k=request.top_k
+                    top_k=query_req.top_k
                 )
 
                 # Reorder sources based on ranking
@@ -312,14 +312,14 @@ async def batch_query(
         )
 
         # Apply ranking to each result if enabled
-        if request.enable_ranking:
+        if batch_req.enable_ranking:
             ranking_config = None
-            if request.ranking_strategy:
+            if batch_req.ranking_strategy:
                 try:
-                    strategy = RankingStrategy(request.ranking_strategy.lower())
+                    strategy = RankingStrategy(batch_req.ranking_strategy.lower())
                     ranking_config = RankingConfig(strategy=strategy)
                 except ValueError:
-                    logger.warning(f"Invalid ranking strategy: {request.ranking_strategy}, using default")
+                    logger.warning(f"Invalid ranking strategy: {batch_req.ranking_strategy}, using default")
 
             for i, result in enumerate(results):
                 if result.sources and result.retrieval_results:
@@ -337,9 +337,9 @@ async def batch_query(
                         # Apply ranking
                         ranked_results = rank_results(
                             ranking_results,
-                            query=request.queries[i],
+                            query=batch_req.queries[i],
                             config=ranking_config,
-                            top_k=request.top_k
+                            top_k=batch_req.top_k
                         )
 
                         # Reorder sources based on ranking

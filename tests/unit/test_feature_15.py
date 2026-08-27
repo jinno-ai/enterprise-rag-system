@@ -617,7 +617,10 @@ class TestMetadataSearchAPI:
 
             return pipeline
 
-        with patch('app.main.get_rag_pipeline', mock_get_rag_pipeline):
+        pipeline = mock_get_rag_pipeline()
+        test_app.state.rag_pipeline = pipeline
+
+        with patch('app.main.get_rag_pipeline', lambda: pipeline):
             yield TestClient(test_app)
 
     def test_metadata_search_endpoint_success(self, client):

@@ -102,6 +102,8 @@ def client(mock_pipeline):
     def mock_get_rag_pipeline():
         return mock_pipeline
 
+    test_app.state.rag_pipeline = mock_pipeline
+
     with patch('app.main.get_rag_pipeline', mock_get_rag_pipeline):
         yield TestClient(test_app)
 
@@ -482,7 +484,7 @@ class TestBackwardCompatibility:
     def test_non_streaming_endpoint_still_works(self, client):
         """Test that non-streaming endpoint still functions"""
         # Mock the query method
-        def mock_query_impl(question, **kwargs):
+        async def mock_query_impl(question, **kwargs):
             return RAGResponse(
                 answer="Test answer",
                 sources=[],
@@ -508,7 +510,7 @@ class TestBackwardCompatibility:
 
     def test_batch_query_still_works(self, client):
         """Test that batch query endpoint still functions"""
-        def mock_batch_query(questions, **kwargs):
+        async def mock_batch_query(questions, **kwargs):
             return [
                 RAGResponse(
                     answer=f"Answer to {q}",

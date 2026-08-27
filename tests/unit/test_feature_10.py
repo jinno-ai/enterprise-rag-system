@@ -7,7 +7,7 @@ This feature improves user queries by correcting typos and suggesting better phr
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from typing import Dict, Any
 
 from app.main import app
@@ -115,14 +115,15 @@ class TestQueryAutocorrectIntegration:
         # Mock RAG pipeline
         with patch('app.main.get_rag_pipeline') as mock_pipeline:
             mock_pipeline_instance = Mock()
-            mock_pipeline_instance.query.return_value = Mock(
+            mock_pipeline_instance.query = AsyncMock(return_value=Mock(
                 answer="Remote work is allowed...",
                 sources=[],
                 confidence=0.85,
                 latency_ms=1000,
                 tokens_used=100
-            )
+            ))
             mock_pipeline.return_value = mock_pipeline_instance
+            client.app.state.rag_pipeline = mock_pipeline_instance
 
             # Test with autocorrect enabled
             response = client.post(
@@ -142,14 +143,15 @@ class TestQueryAutocorrectIntegration:
         # Mock RAG pipeline
         with patch('app.main.get_rag_pipeline') as mock_pipeline:
             mock_pipeline_instance = Mock()
-            mock_pipeline_instance.query.return_value = Mock(
+            mock_pipeline_instance.query = AsyncMock(return_value=Mock(
                 answer="Remote work is allowed...",
                 sources=[],
                 confidence=0.85,
                 latency_ms=1000,
                 tokens_used=100
-            )
+            ))
             mock_pipeline.return_value = mock_pipeline_instance
+            client.app.state.rag_pipeline = mock_pipeline_instance
 
             # Test with autocorrect disabled (default)
             response = client.post(
@@ -175,14 +177,15 @@ class TestQueryAutocorrectIntegration:
 
             # Mock RAG pipeline
             mock_pipeline_instance = Mock()
-            mock_pipeline_instance.query.return_value = Mock(
+            mock_pipeline_instance.query = AsyncMock(return_value=Mock(
                 answer="Remote work is allowed...",
                 sources=[],
                 confidence=0.85,
                 latency_ms=1000,
                 tokens_used=100
-            )
+            ))
             mock_pipeline.return_value = mock_pipeline_instance
+            client.app.state.rag_pipeline = mock_pipeline_instance
 
             response = client.post(
                 "/api/v1/query/",
