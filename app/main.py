@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import uvicorn
-import uuid
+from typing import Optional
 
 from app.core.config import get_settings
 from app.core.vectordb import get_vector_db
@@ -20,12 +20,16 @@ from app.core.cache import CacheManager
 from app.core import metrics
 from app.services.retrieval import HybridRetriever
 from app.services.rag_pipeline import RAGPipeline
-from app.api.routes import query, health, ingest
+from app.api.routes import query, health, ingest, documents
 from app.middleware.validation import ValidationMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from openai import AsyncOpenAI
 from slowapi.errors import RateLimitExceeded
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.api.routes.v2 import router as v2_router
+from app.api.analytics import router as analytics_router
+from app.api.docs import router as docs_router, get_documentation_generator
+from app.middleware.compression import CompressionMiddleware
 
 
 # Setup logging first
@@ -79,7 +83,7 @@ async def lifespan(app: FastAPI):
         )
 
         logger.info("Initializing RAG pipeline...")
-        rag_pipeline = RAGPipeline(
+        _rag_pipeline = RAGPipeline(
             retriever=retriever,
             llm_client=openai_client,
             llm_model=settings.llm_model,
@@ -87,18 +91,87 @@ async def lifespan(app: FastAPI):
             max_tokens=settings.llm_max_tokens,
             cache_manager=cache_manager
         )
-        app.state.rag_pipeline = rag_pipeline
+        app.state.rag_pipeline = _rag_pipeline
+
+        logger.info("Starting background document processor...")
+        from app.services.document_processor import start_processor, get_processor
+        await start_processor()
+
+        # Initialize webhook service if enabled
+        if settings.webhook_enabled:
+            logger.info("Initializing webhook service...")
+            from app.services.webhook import start_webhook_service, WebhookEventType, get_webhook_service
+
+            webhook_service = await start_webhook_service(
+                timeout_seconds=settings.webhook_timeout_seconds,
+                max_retries=settings.webhook_max_retries,
+                retry_delay_seconds=settings.webhook_retry_delay_seconds
+            )
+
+            # Register webhook callback with document processor
+            processor = get_processor()
+
+            async def webhook_callback(result):
+                """Send webhook on document processing completion"""
+                if result.success:
+                    await webhook_service.send_event(
+                        event_type=WebhookEventType.DOCUMENT_PROCESSING_COMPLETED,
+                        task_id=result.task_id,
+                        data={
+                            "documents_processed": result.documents_processed,
+                            "chunks_created": result.chunks_created,
+                            "collection": result.collection,
+                            "processing_time_ms": result.processing_time_ms,
+                            "message": result.message
+                        },
+                        collection=result.collection
+                    )
+                else:
+                    await webhook_service.send_event(
+                        event_type=WebhookEventType.DOCUMENT_PROCESSING_FAILED,
+                        task_id=result.task_id,
+                        data={
+                            "error": result.error,
+                            "collection": result.collection,
+                            "message": result.message
+                        },
+                        collection=result.collection
+                    )
+
+            processor.register_callback(webhook_callback)
+            logger.info("Webhook service integrated with document processor")
+        else:
+            logger.info("Webhook service disabled (set WEBHOOK_ENABLED=true to enable)")
+
+        # Store error-free state for health check access
+        app.state.initialization_error = None
 
         logger.info("Enterprise RAG System ready!")
+        _initialization_error = None
 
     except Exception as e:
         logger.error(f"Initialization failed: {e}", exc_info=True)
-        raise RuntimeError(f"Enterprise RAG System initialization failed: {e}") from e
+        error_msg = f"Initialization failed: {e}"
+        _initialization_error = error_msg
+        _rag_pipeline = None
+        # Store error state for health check access
+        app.state.rag_pipeline = None
+        app.state.initialization_error = error_msg
+        # Allow app to start in degraded mode; health check reflects the error
+
 
     yield
 
     # Shutdown
     logger.info("Shutting down Enterprise RAG System...")
+    from app.services.document_processor import stop_processor
+    await stop_processor()
+
+    # Stop webhook service if it was started
+    if settings.webhook_enabled:
+        from app.services.webhook import stop_webhook_service
+        await stop_webhook_service()
+        logger.info("🔔 Webhook service stopped")
 
 
 # Create FastAPI app
@@ -234,11 +307,34 @@ app.add_middleware(
     log_suspicious=True
 )
 
+# Add compression middleware
+# Compresses responses larger than minimum_size threshold when client supports gzip
+app.add_middleware(
+    CompressionMiddleware,
+    minimum_size=settings.compression_minimum_size,
+    compresslevel=settings.compression_level
+)
+
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+
+# v1 API routes (backward compatible)
 app.include_router(query.router, prefix="/api/v1", tags=["Query"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])
+app.include_router(documents.router, prefix="/api/v1", tags=["Documents"])
+
+# v2 API routes (enhanced features)
+app.include_router(v2_router)
+
+# Analytics API routes
+app.include_router(analytics_router)
+
+# Documentation API routes
+app.include_router(docs_router)
+
+# Initialize enhanced documentation
+get_documentation_generator(app)
 
 
 @app.get("/", tags=["Health"])
@@ -252,6 +348,27 @@ async def root(request: Request):
         "docs": "/docs",
         "redoc": "/redoc"
     }
+
+
+def get_rag_pipeline() -> RAGPipeline:
+    """
+    Get the global RAG pipeline instance
+
+    Deprecated: Use dependency injection with FastAPI's Depends instead.
+    This function is kept for backward compatibility.
+    """
+    # Try to get from app.state if available
+    import fastapi
+    current_app = fastapi.FastAPI()
+    if hasattr(current_app, 'state') and hasattr(current_app.state, 'rag_pipeline'):
+        pipeline = current_app.state.rag_pipeline
+        if pipeline is not None:
+            return pipeline
+
+    raise RuntimeError(
+        "RAG pipeline not initialized. "
+        "This application requires successful startup before accessing the pipeline."
+    )
 
 
 if __name__ == "__main__":

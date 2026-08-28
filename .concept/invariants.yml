@@ -1,0 +1,255 @@
+invariants:
+  - id: "INV-RANK-001"
+    related_terms: ["ResultRanker", "RAGResponse", "QueryRequest"]
+    status: "stable"
+    strength: "hard"
+    statement: "ランキング適用時、sources と retrieval_results の長さが不一致でも sources をサイレントに欠落させない"
+    rationale: "zip() ペアリングは短い方に切り詰め、応答から文書が消える。ユーザーにとっては情報の無断欠損"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L208-L231"
+        quote: "test_query_ranking_length_mismatch_keeps_all_sources ... assert len(returned_docs) == 4"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py::TestQueryRankingIntegration"
+
+  - id: "INV-RANK-002"
+    related_terms: ["ResultRanker", "RAGResponse"]
+    status: "draft"
+    strength: "soft"
+    statement: "ランキング適用時、sources は final_score 降順に並べ替えられる"
+    rationale: "ランキングが効いていることの直接的検証。現行テストは set 比較のみで順序を検証していない（要 強化）"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L233-L257"
+        quote: "test_query_ranking_aligned_lists_rank_all_sources ... assert set(returned_docs) == {...}"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py::TestQueryRankingIntegration"
+
+  - id: "INV-RANK-003"
+    related_terms: ["ResultRanker", "QueryRequest"]
+    status: "stable"
+    strength: "soft"
+    statement: "ランキング処理の失敗はクエリ自体を失敗させず、元の順序で応答する"
+    rationale: "付加機能の障害が主機能（検索回答）を巻き込まないためのフェイルセーフ"
+    evidence:
+      - source: "app/api/routes/query.py#L165-L167"
+        quote: "except Exception as ranking_error: ... using original order"
+
+  - id: "INV-ENC-001"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "hard"
+    statement: "encrypt で暗号化した内容は decrypt で元の平文に復元できる"
+    rationale: "暗号化の可逆性は機密データ保存の前提"
+    evidence:
+      - source: "tests/unit/test_feature_49.py#L38-L51"
+        quote: "test_encrypt_and_decrypt_simple_content"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_49.py"
+
+  - id: "INV-ENC-002"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "hard"
+    statement: "空コンテンツの暗号化は暗号化せずそのまま返す"
+    rationale: "空値に対する誤った暗号文生成を防ぐ"
+    evidence:
+      - source: "tests/unit/test_feature_49.py#L53-L59"
+        quote: "test_encrypt_empty_content"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_49.py"
+
+  - id: "INV-ENC-003"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "hard"
+    statement: "誤ったキーでの復号は失敗し、平文を返さない"
+    rationale: "機密性の保証。失敗時は例外（安全側）"
+    evidence:
+      - source: "tests/unit/test_feature_49.py#L71-L83"
+        quote: "test_decrypt_with_wrong_key"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_49.py"
+
+  - id: "INV-ENC-004"
+    related_terms: ["EncryptionService"]
+    status: "stable"
+    strength: "soft"
+    statement: "EncryptionService.encrypt のメソッド定義は単一である（到達不能な重複本体を持たない）"
+    rationale: "回収済み Feature 44 由来の重複本体は解消済み（AST検証: encrypt 1件、encrypt_dict は別メソッド）"
+    evidence:
+      - source: "app/core/encryption.py#L48-L160"
+        quote: "AST: EncryptionService methods = ['__init__','generate_key','encrypt','decrypt','encrypt_dict','decrypt_dict','rotate_key','is_encrypted']"
+
+  - id: "INV-API-001"
+    related_terms: ["QueryRequest"]
+    status: "stable"
+    strength: "hard"
+    statement: "API v1/v2 はバージョン分離され、無効バージョンは 404 を返す"
+    rationale: "後方互換性とバージョン隔離の保証"
+    evidence:
+      - source: "tests/unit/test_feature_07.py#L116-L133"
+        quote: "test_api_version_isolation ... test_invalid_version_returns_404"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_07.py"
+
+  - id: "INV-API-002"
+    related_terms: ["RAGPipeline", "RAGResponse"]
+    status: "draft"
+    strength: "hard"
+    statement: "バッチクエリはクエリ数と同数の RAGResponse を返す"
+    rationale: "バッチ応答の対応関係の保証"
+    evidence:
+      - source: "tests/unit/test_rag_pipeline.py#L106-L119"
+        quote: "test_rag_pipeline_batch_query"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py"
+
+  - id: "INV-PIPE-001"
+    related_terms: ["RAGPipeline"]
+    status: "stable"
+    strength: "hard"
+    statement: "検索結果がゼロでもクエリは例外で失敗しない"
+    rationale: "空結果は正常系。UI/上位呼び出しが崩れない前提"
+    evidence:
+      - source: "tests/unit/test_rag_pipeline.py#L89-L104"
+        quote: "test_rag_pipeline_no_results"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py"
+
+  - id: "INV-GIT-001"
+    related_terms: []
+    status: "stable"
+    strength: "hard"
+    statement: "カバレッジ成果物（.coverage, coverage.json, htmlcov/）は git 管理対象としない"
+    rationale: "テスト実行のたびにワークツリーが汚染され、停滞の温床になる（docs/dirty-tree-investigation.md 参照）"
+    evidence:
+      - source: ".gitignore#L5-L9"
+        quote: ".coverage / .coverage.* / coverage.json / htmlcov/"
+    checks:
+      - type: "command"
+        target: "git ls-files | grep -cE '^\\.coverage|^coverage\\.json|^htmlcov/' == 0"
+
+  - id: "INV-ENV-001"
+    related_terms: ["Settings"]
+    status: "stable"
+    strength: "hard"
+    statement: "Settings は OPENAI_API_KEY 環境変数なしには生成できない（テスト時は dummy でよい）"
+    rationale: "設定契約の明示。未設定ではコレクション段階で ValidationError になる（実測 2026-08-28）"
+    evidence:
+      - source: "app/core/config.py#L17"
+        quote: "openai_api_key: str = Field(..., env=\"OPENAI_API_KEY\")"
+
+  - id: "INV-ROUTE-001"
+    related_terms: []
+    status: "stable"
+    strength: "soft"
+    statement: "ヘルスチェック (/health) は初期化状態によらず 200 と status を返す"
+    rationale: "生存確認の安定供給"
+    evidence:
+      - source: "tests/unit/test_api_routes.py#L28-L37"
+        quote: "test_health_endpoint ... assert data[\"status\"] == \"healthy\""
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py"
+
+  - id: "INV-CB-001"
+    related_terms: ["CircuitBreaker"]
+    status: "draft"
+    strength: "hard"
+    statement: "CircuitBreaker は失敗閾値超過で open となり、回復タイムアウト経過後は half_open に遷移して試行を限定する"
+    rationale: "障害連鎖の遮断と回復試行の段階的再開が本質。統合実装 (8174777) は open→half_open 遷移が発生せず違反中（CFLT-SUITE-001 で追跡）"
+    evidence:
+      - source: "app/core/circuit_breaker.py#L90-L95"
+        quote: "class CircuitBreaker: ... CircuitState"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_02.py::TestCircuitBreakerHalfOpenBehavior"
+
+  - id: "INV-CB-002"
+    related_terms: ["CircuitBreaker"]
+    status: "draft"
+    strength: "soft"
+    statement: "CircuitBreaker の公開APIは async 新base と legacy sync/decorator/registry の両方を提供する"
+    rationale: "8174777 の統合方針。既存呼び出し側（legacy）を壊さず新baseに対応する"
+    evidence:
+      - source: "app/core/circuit_breaker.py#L90-L560"
+        quote: "unified implementation supporting both new-base async API and legacy sync/decorator/registry API"
+
+  - id: "INV-CACHE-001"
+    related_terms: ["QueryCache"]
+    status: "stable"
+    strength: "soft"
+    statement: "app/core/cache は CacheManager と並存して QueryCache/get_cache レガシーAPIを提供する"
+    rationale: "88d479b の復帰方針。レガシー呼び出し側の互換性維持"
+    evidence:
+      - source: "app/core/cache.py#L476,L726"
+        quote: "class QueryCache: ... def get_cache() -> QueryCache"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_19.py"
+
+  - id: "INV-TEST-001"
+    related_terms: []
+    status: "stable"
+    strength: "soft"
+    statement: "品質ゲート: pytest 全件 green であること（カバレッジゲート ≥11% は charter MET-002 参照）"
+    rationale: "コミット可能状態の定義。2026-08-28 05:29 JST 実測@HEAD c208aa7: 956 passed / 34 failed / 44 skipped — 違反中、CFLT-SUITE-001 + MS-004 で追跡"
+    evidence:
+      - source: "pytest@HEAD c208aa7 (1034 collected)"
+        quote: "34 failed, 956 passed, 44 skipped"
+
+  - id: "INV-TEST-002"
+    related_terms: ["ResultRanker", "QueryRequest"]
+    status: "draft"
+    strength: "soft"
+    statement: "POST /query のテストは実DI経路（app.api.dependencies.get_rag_pipeline → request.app.state.rag_pipeline）でハンドラを検証する"
+    rationale: "app.main.get_rag_pipeline へのパッチは /query の Depends には届かない（decorator 時点で関数オブジェクト確定）。2026-08-28 実測で MS-002 受け入れテストがこの誤りで 500"
+    evidence:
+      - source: "app/api/routes/query.py#L14,L83 + tests/unit/test_api_routes.py#L13-L26"
+        quote: "from app.api.dependencies import get_rag_pipeline ... Depends(get_rag_pipeline); fixture は test_app.state.rag_pipeline のみ設定"
+
+  - id: "INV-API-003"
+    related_terms: ["QueryRequest", "RAGResponse"]
+    status: "draft"
+    strength: "hard"
+    statement: "メインアプリの OpenAPI スキーマは QueryRequest/QueryResponse モデルを含む"
+    rationale: "API 契約の自己記述。回収した docs 体制とモデル公開の不整合で現在違反中（CFLT-SUITE-001）"
+    evidence:
+      - source: "tests/unit/test_api_docs.py#L146,L192"
+        quote: "assert 'QueryRequest' in schemas, 'QueryRequest model must be defined'"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_api_docs.py"
+
+  - id: "INV-SEC-001"
+    related_terms: []
+    status: "draft"
+    strength: "hard"
+    statement: "ValidationMiddleware は XSS/SQLインジェクション/パストラバーサル入力を 400/422/429 で拒否し、500 を返さない"
+    rationale: "セキュリティ検知の失敗がサーバーエラーとして露呈すると、攻撃の成否判定と障害監視の両方が崩れる。現在違反中（実測 500）"
+    evidence:
+      - source: "tests/unit/test_validation_middleware.py#L192-L260"
+        quote: "assert response.status_code in [400, 422, 429] ... 実測では 500"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_validation_middleware.py"
+
+  - id: "INV-PIPE-002"
+    related_terms: ["RAGPipeline"]
+    status: "draft"
+    strength: "hard"
+    statement: "RAGPipeline.batch_query は async であり、呼び出し側は await する"
+    rationale: "回収後のpipeline契約。旧 feature_14 テスト20件が同期呼び出しのまま TypeError で失敗中（CFLT-SUITE-001）"
+    evidence:
+      - source: "app/services/rag_pipeline.py#L339 + tests/unit/test_feature_14.py#L124-L135"
+        quote: "async def batch_query(...) ... TypeError: object of type 'coroutine' has no len()"
+    checks:
+      - type: "test"
+        target: "tests/unit/test_feature_14.py"

@@ -1,0 +1,13 @@
+version: "1.0"
+
+commands:
+  # pyproject.toml / package.json 等の lint 設定が存在しないため未検出
+  lint: "echo \"no lint configured\""
+  # pytest.ini あり。Settings が OPENAI_API_KEY を必須とするため dummy でも可
+  test: "OPENAI_API_KEY=test-key-dummy pytest"
+
+budget:
+  max_cycles: 5
+  max_files: 25
+
+mode: "commit"

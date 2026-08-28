@@ -5,6 +5,7 @@ Pydantic schemas for request/response validation
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from enum import Enum
 
 
 class ErrorDetail(BaseModel):
@@ -167,3 +168,79 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="ステータス / Status")
     version: str = Field(..., description="バージョン / Version")
     services: Dict[str, str] = Field(..., description="サービスごとのステータス / Status by service")
+
+
+class LanguageCode(str, Enum):
+    """Supported language codes (ISO 639-1)"""
+    ENGLISH = "en"
+    SPANISH = "es"
+    FRENCH = "fr"
+    GERMAN = "de"
+    ITALIAN = "it"
+    PORTUGUESE = "pt"
+    RUSSIAN = "ru"
+    CHINESE = "zh"
+    JAPANESE = "ja"
+    KOREAN = "ko"
+    ARABIC = "ar"
+    HINDI = "hi"
+    DUTCH = "nl"
+    POLISH = "pl"
+    TURKISH = "tr"
+
+
+class LanguageDetectionResponse(BaseModel):
+    """Language detection response"""
+    detected_language: str = Field(..., description="Detected language code")
+    confidence: float = Field(..., ge=0, le=1, description="Detection confidence score")
+    is_supported: bool = Field(..., description="Whether the language is supported")
+    alternative_languages: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Alternative language predictions with confidence scores"
+    )
+
+
+class MultilingualQueryRequest(BaseModel):
+    """Multilingual query request schema"""
+    query: str = Field(..., min_length=1, max_length=1000, description="User query")
+    collection: str = Field(default="default", description="Document collection name")
+    top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
+    include_sources: bool = Field(default=True, description="Include source documents")
+    language: Optional[LanguageCode] = Field(
+        default=None,
+        description="Optional language code for query (auto-detected if not provided)"
+    )
+    preferred_language: Optional[LanguageCode] = Field(
+        default=None,
+        description="Preferred language for results"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "query": "¿Cuál es la política de trabajo remoto?",
+                "collection": "hr-policies",
+                "top_k": 5,
+                "include_sources": True,
+                "language": "es",
+                "preferred_language": "en"
+            }
+        }
+
+
+class MultilingualQueryResponse(BaseModel):
+    """Multilingual query response schema"""
+    answer: str
+    sources: List[Source]
+    confidence: float = Field(ge=0, le=1)
+    latency_ms: int
+    tokens_used: int
+    cached: bool = False
+    detected_language: LanguageDetectionResponse
+    was_translated: bool = Field(default=False, description="Whether the query was translated")
+
+
+class SupportedLanguagesResponse(BaseModel):
+    """Supported languages response"""
+    languages: List[Dict[str, str]] = Field(..., description="List of supported languages")
+    count: int = Field(..., description="Number of supported languages")

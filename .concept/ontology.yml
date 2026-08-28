@@ -1,0 +1,410 @@
+version: "0.3"
+
+canonical_terms:
+  RAGPipeline:
+    id: "TERM-RAGPIPELINE"
+    layer: "core"
+    status: "stable"
+    definition: "取り込み〜検索〜回答生成を統括するパイプラインの本体。query/batch_query を持つ"
+    synonyms: ["pipeline"]
+    boundaries:
+      includes: ["クエリ実行", "バッチクエリ", "回答生成のオーケストレーション"]
+      excludes: ["永続化", "API ルーティング"]
+    related_terms: ["RAGResponse", "HybridRetriever", "ResultRanker"]
+    evidence:
+      - source: "app/services/rag_pipeline.py#L34-L134"
+        quote: "class RAGPipeline: ... def query("
+
+  RAGResponse:
+    id: "TERM-RAGRESPONSE"
+    layer: "domain"
+    status: "stable"
+    definition: "クエリ実行結果の契約オブジェクト。sources と retrieval_results は長さが一致する保証がない"
+    synonyms: []
+    boundaries:
+      includes: ["answer", "sources", "confidence", "retrieval_results"]
+      excludes: ["HTTP レスポンスモデル（QueryResponse は別物）"]
+    related_terms: ["RAGPipeline", "QueryRequest", "ResultRanker"]
+    evidence:
+      - source: "app/services/rag_pipeline.py#L24-L32"
+        quote: "class RAGResponse:"
+
+  QueryRequest:
+    id: "TERM-QUERYREQUEST"
+    layer: "domain"
+    status: "stable"
+    definition: "POST /api/v1/query/ のリクエストモデル。enable_ranking はデフォルト True"
+    synonyms: []
+    boundaries:
+      includes: ["query", "top_k", "use_hybrid", "enable_ranking", "ranking_strategy"]
+      excludes: ["バッチリクエスト（BatchQueryRequest）"]
+    related_terms: ["RAGPipeline", "ResultRanker"]
+    evidence:
+      - source: "app/api/routes/query.py#L26-L56"
+        quote: "class QueryRequest(BaseModel): ... enable_ranking: bool = Field(True, ...)"
+
+  VectorDB:
+    id: "TERM-VECTORDB"
+    layer: "core"
+    status: "stable"
+    definition: "ベクトルストアの抽象インターフェース。実装は FAISS と Pinecone"
+    synonyms: ["vector store"]
+    boundaries:
+      includes: ["upsert/search/delete の共通契約"]
+      excludes: ["埋め込み生成"]
+    related_terms: ["FAISSVectorDB", "EmbeddingModel"]
+    evidence:
+      - source: "app/core/vectordb.py#L25"
+        quote: "class VectorDB(ABC):"
+
+  FAISSVectorDB:
+    id: "TERM-FAISSVECTORDB"
+    layer: "domain"
+    status: "stable"
+    definition: "ローカル実行可能な FAISS ベースの VectorDB 実装"
+    synonyms: []
+    boundaries:
+      includes: ["ローカルインデックス運用"]
+      excludes: ["マネージド Pinecone 運用"]
+    related_terms: ["VectorDB"]
+    evidence:
+      - source: "app/core/vectordb.py"
+        quote: "class FAISSVectorDB"
+
+  EmbeddingModel:
+    id: "TERM-EMBEDDINGMODEL"
+    layer: "core"
+    status: "stable"
+    definition: "埋め込み生成の抽象。OpenAI / Cohere / Mock 実装を持つ"
+    synonyms: ["embeddings"]
+    boundaries:
+      includes: ["テキスト→ベクトル変換の契約"]
+      excludes: ["ベクトル検索"]
+    related_terms: ["VectorDB"]
+    evidence:
+      - source: "app/core/embeddings.py#L16"
+        quote: "class EmbeddingModel(ABC):"
+
+  ResultRanker:
+    id: "TERM-RESULTRANKER"
+    layer: "core"
+    status: "stable"
+    definition: "learning-to-rank エンジン。linear/exponential/rrf 戦略と多様性促進を持つ"
+    synonyms: ["ranking", "rank_results"]
+    boundaries:
+      includes: ["スコア合成", "多様性プロモーション", "final_score 付与"]
+      excludes: ["検索自体（HybridRetriever の担当）"]
+    related_terms: ["HybridRetriever", "RAGResponse", "QueryRequest"]
+    evidence:
+      - source: "app/services/ranking.py#L69-L171"
+        quote: "class ResultRanker: ... result[\"final_score\"] = round(final_scores[i], 4)"
+
+  HybridRetriever:
+    id: "TERM-HYBRIDRETRIEVER"
+    layer: "core"
+    status: "stable"
+    definition: "セマンティック＋キーワードのハイブリッド検索を行うコンポーネント"
+    synonyms: ["retriever"]
+    boundaries:
+      includes: ["ベクトル検索", "キーワード検索", "結果統合"]
+      excludes: ["ランキング（ResultRanker の担当）"]
+    related_terms: ["VectorDB", "ResultRanker", "RetrievalResult"]
+    evidence:
+      - source: "app/services/retrieval.py#L28"
+        quote: "class HybridRetriever:"
+
+  DocumentChunker:
+    id: "TERM-DOCUMENTCHUNKER"
+    layer: "core"
+    status: "stable"
+    definition: "チャンク戦略（固定長/再帰/文単位）を切り替えて文書を分割するコンポーネント"
+    synonyms: ["chunking"]
+    boundaries:
+      includes: ["ChunkingStrategy の選択", "Chunk 生成"]
+      excludes: ["文書の読み込み（DocumentLoader の担当）"]
+    related_terms: ["DocumentLoader", "BackgroundTaskProcessor"]
+    evidence:
+      - source: "app/services/chunking.py#L490"
+        quote: "class DocumentChunker:"
+
+  DocumentLoader:
+    id: "TERM-DOCUMENTLOADER"
+    layer: "domain"
+    status: "stable"
+    definition: "PDF/Markdown/Docx/HTML/Confluence/Notion/音声対応の文書読み込みコンポーネント"
+    synonyms: []
+    boundaries:
+      includes: ["マルチフォーマット読み込み", "Document オブジェクト化"]
+      excludes: ["チャンキング"]
+    related_terms: ["DocumentChunker", "AudioTranscriptionService"]
+    evidence:
+      - source: "app/services/document_loader.py#L134"
+        quote: "class DocumentLoader:"
+
+  BackgroundTaskProcessor:
+    id: "TERM-BACKGROUNDTASKPROCESSOR"
+    layer: "domain"
+    status: "stable"
+    definition: "非同期取り込みタスクの状態管理とバックグラウンド実行を担うプロセッサ"
+    synonyms: ["document processor"]
+    boundaries:
+      includes: ["ProcessingTask のライフサイクル管理"]
+      excludes: ["同期インジェスト経路"]
+    lifecycle: ["pending", "processing", "completed", "failed"]
+    related_terms: ["DocumentLoader", "DocumentChunker"]
+    evidence:
+      - source: "app/services/document_processor.py#L22-L75"
+        quote: "class TaskStatus(Enum): ... class BackgroundTaskProcessor:"
+
+  DocumentDeduplicator:
+    id: "TERM-DOCUMENTDEDUPLICATOR"
+    layer: "domain"
+    status: "stable"
+    definition: "完全一致ハッシュと類似度の2戦略で重複文書を検出・除去するコンポーネント"
+    synonyms: ["dedup"]
+    boundaries:
+      includes: ["ExactHash / Similarity 戦略"]
+      excludes: ["チャンキング後の断片重複"]
+    related_terms: ["BackgroundTaskProcessor"]
+    evidence:
+      - source: "app/services/deduplication.py#L75-L266"
+        quote: "class ExactHashDeduplication ... class DocumentDeduplicator:"
+
+  EncryptionService:
+    id: "TERM-ENCRYPTIONSERVICE"
+    layer: "domain"
+    status: "stable"
+    definition: "Fernet による機密データの暗号化/復号サービス。encrypt メソッドは単一定義"
+    synonyms: ["encryption"]
+    boundaries:
+      includes: ["encrypt/decrypt/rotate_key"]
+      excludes: ["トランスポート層の暗号化（TLS）"]
+    related_terms: ["Settings"]
+    evidence:
+      - source: "app/core/encryption.py#L48"
+        quote: "class EncryptionService:"
+
+  CircuitBreaker:
+    id: "TERM-CIRCUITBREAKER"
+    layer: "domain"
+    status: "stable"
+    definition: "障害連鎖を防ぐサーキットブレーカー。閾値超過で open→half_open→closed を遷移"
+    synonyms: []
+    boundaries:
+      includes: ["失敗計測", "状態遷移", "Call 拒否"]
+      excludes: ["リトライ制御"]
+    lifecycle: ["closed", "open", "half_open"]
+    related_terms: ["QueryCache"]
+    evidence:
+      - source: "app/core/circuit_breaker.py#L90"
+        quote: "class CircuitBreaker:"
+
+  QueryCache:
+    id: "TERM-QUERYCACHE"
+    layer: "domain"
+    status: "stable"
+    definition: "クエリ応答のキャッシュ。TTL とサイズ上限による退避を持つ"
+    synonyms: ["cache"]
+    boundaries:
+      includes: ["get/set/invalidate"]
+      excludes: ["ベクトルインデックスのキャッシュ"]
+    related_terms: ["RAGPipeline"]
+    evidence:
+      - source: "app/core/cache.py#L476"
+        quote: "class QueryCache:"
+
+  AudioTranscriptionService:
+    id: "TERM-AUDIOTRANSCRIPTIONSERVICE"
+    layer: "domain"
+    status: "stable"
+    definition: "Whisper による音声書き起こしサービス。MP3/WAV/M4A/WebM に対応"
+    synonyms: ["transcription"]
+    boundaries:
+      includes: ["音声→テキスト変換", "フォーマット検証"]
+      excludes: ["テキスト化後のチャンキング"]
+    related_terms: ["DocumentLoader"]
+    evidence:
+      - source: "app/services/transcription.py#L67"
+        quote: "class AudioTranscriptionService:"
+
+  StreamingRAGPipeline:
+    id: "TERM-STREAMINGRAGPIPELINE"
+    layer: "domain"
+    status: "stable"
+    definition: "RAGPipeline を継承し、回答をストリームチャンクで逐次返すパイプライン"
+    synonyms: []
+    boundaries:
+      includes: ["ストリーム回答生成"]
+      excludes: ["非ストリーム経路（RAGPipeline の担当）"]
+    related_terms: ["RAGPipeline", "StreamingResponseGenerator"]
+    evidence:
+      - source: "app/services/rag_pipeline.py#L286"
+        quote: "class StreamingRAGPipeline(RAGPipeline):"
+
+  DocumentExporter:
+    id: "TERM-DOCUMENTEXPORTER"
+    layer: "domain"
+    status: "stable"
+    definition: "検索結果・文書のエクスポート（複数フォーマット）を担うコンポーネント"
+    synonyms: ["export"]
+    boundaries:
+      includes: ["ExportFormat 変換"]
+      excludes: ["取り込み（逆方向の処理）"]
+    related_terms: ["RAGResponse"]
+    evidence:
+      - source: "app/services/export.py#L60"
+        quote: "class DocumentExporter:"
+
+  LanguageService:
+    id: "TERM-LANGUAGESERVICE"
+    layer: "domain"
+    status: "stable"
+    definition: "多言語対応（言語検出・翻訳）のサービス"
+    synonyms: ["multi-language"]
+    boundaries:
+      includes: ["LanguageDetector", "翻訳リクエスト処理"]
+      excludes: ["音声認識（AudioTranscriptionService の担当）"]
+    related_terms: ["AudioTranscriptionService"]
+    evidence:
+      - source: "app/services/language.py#L263"
+        quote: "class LanguageService:"
+
+  WebhookService:
+    id: "TERM-WEBHOOKSERVICE"
+    layer: "domain"
+    status: "stable"
+    definition: "イベント（WebhookEvent）の配信とリトライを管理するサービス"
+    synonyms: ["webhook"]
+    boundaries:
+      includes: ["イベント配信", "配信結果記録"]
+      excludes: ["イベントの発火条件管理"]
+    related_terms: ["BackgroundTaskProcessor"]
+    evidence:
+      - source: "app/services/webhook.py#L110"
+        quote: "class WebhookService:"
+
+  QuerySuggestionService:
+    id: "TERM-QUERYSUGGESTIONSERVICE"
+    layer: "aux"
+    status: "stable"
+    definition: "クエリ履歴からサジェストを生成するサービス"
+    synonyms: ["suggestion"]
+    boundaries:
+      includes: ["track_query", "サジェスト生成"]
+      excludes: ["クエリの自動修正（AutocorrectService の担当）"]
+    related_terms: ["RAGPipeline"]
+    evidence:
+      - source: "app/services/suggestion.py#L213"
+        quote: "class QuerySuggestionService:"
+
+  AutocorrectService:
+    id: "TERM-AUTOCORRECTSERVICE"
+    layer: "aux"
+    status: "draft"
+    definition: "クエリの軽量自動修正（スペル等）を提供するサービス"
+    synonyms: ["autocorrect"]
+    boundaries:
+      includes: ["クエリ事前補正"]
+      excludes: ["意味検索"]
+    related_terms: ["QueryRequest"]
+    evidence:
+      - source: "app/services/autocorrect.py#L27"
+        quote: "class AutocorrectService:"
+
+  MetadataSearchService:
+    id: "TERM-METADATASEARCHSERVICE"
+    layer: "aux"
+    status: "draft"
+    definition: "メタデータに対するフィルタ検索（演算子ベース）を提供するサービス"
+    synonyms: ["metadata search"]
+    boundaries:
+      includes: ["FilterOperator による絞り込み"]
+      excludes: ["ベクトル類似検索"]
+    related_terms: ["HybridRetriever"]
+    evidence:
+      - source: "app/services/metadata_search.py#L98"
+        quote: "class MetadataSearchService:"
+
+  CompressionMiddleware:
+    id: "TERM-COMPRESSIONMIDDLEWARE"
+    layer: "aux"
+    status: "stable"
+    definition: "HTTP 応答を圧縮する ASGI ミドルウェア"
+    synonyms: []
+    boundaries:
+      includes: ["応答圧縮"]
+      excludes: ["ペイロード暗号化"]
+    related_terms: ["PerformanceMonitoringMiddleware"]
+    evidence:
+      - source: "app/middleware/compression.py"
+        quote: "class CompressionMiddleware:"
+
+  PerformanceMonitoringMiddleware:
+    id: "TERM-PERFORMANCEMONITORINGMIDDLEWARE"
+    layer: "aux"
+    status: "draft"
+    definition: "リクエスト性能を計測・記録する ASGI ミドルウェア"
+    synonyms: ["monitoring"]
+    boundaries:
+      includes: ["レイテンシ計測", "メトリクス記録"]
+      excludes: ["キャッシュ制御"]
+    related_terms: ["CompressionMiddleware"]
+    evidence:
+      - source: "app/middleware/monitoring.py"
+        quote: "class PerformanceMonitoringMiddleware:"
+
+  PreviewGenerator:
+    id: "TERM-PREVIEWGENERATOR"
+    layer: "aux"
+    status: "draft"
+    definition: "文書プレビュー生成とそのキャッシュを担うコンポーネント"
+    synonyms: ["preview"]
+    boundaries:
+      includes: ["DocumentPreview 生成", "PreviewCache"]
+      excludes: ["全文エクスポート"]
+    related_terms: ["DocumentExporter"]
+    evidence:
+      - source: "app/services/preview.py#L39"
+        quote: "class PreviewGenerator:"
+
+  StreamingResponseGenerator:
+    id: "TERM-STREAMINGRESPONSEGENERATOR"
+    layer: "aux"
+    status: "stable"
+    definition: "StreamChunk を逐次生成するストリーミング応答ジェネレータ"
+    synonyms: ["streaming"]
+    boundaries:
+      includes: ["チャンク生成"]
+      excludes: ["RAG オーケストレーション（StreamingRAGPipeline の担当）"]
+    related_terms: ["StreamingRAGPipeline"]
+    evidence:
+      - source: "app/services/streaming.py#L39"
+        quote: "class StreamingResponseGenerator:"
+
+  Settings:
+    id: "TERM-SETTINGS"
+    layer: "core"
+    status: "stable"
+    definition: "環境変数ベースのアプリケーション設定。OPENAI_API_KEY は必須項目"
+    synonyms: ["config"]
+    boundaries:
+      includes: ["API キー", "検索設定", "埋め込み設定"]
+      excludes: ["実行時キャッシュ状態"]
+    related_terms: ["EncryptionService", "EmbeddingModel"]
+    evidence:
+      - source: "app/core/config.py#L13-L17"
+        quote: "class Settings(BaseSettings): ... openai_api_key: str = Field(..., env=\"OPENAI_API_KEY\")"
+
+  RetrievalResult:
+    id: "TERM-RETRIEVALRESULT"
+    layer: "domain"
+    status: "stable"
+    definition: "検索結果1件の表現。document/score/metadata を持つ。RAGResponse.retrieval_results の要素"
+    synonyms: []
+    boundaries:
+      includes: ["document", "score", "metadata"]
+      excludes: ["回答文（answer）"]
+    related_terms: ["HybridRetriever", "RAGResponse", "ResultRanker"]
+    evidence:
+      - source: "app/services/retrieval.py#L15"
+        quote: "class RetrievalResult:"

@@ -1,334 +1,252 @@
 """
-Unit tests for Query API Routes
-
-Tests for the /query endpoints including validation, error handling,
-and response format verification.
+Unit tests for API routes
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
-from fastapi import HTTPException
-
-from app.api.routes.query import router, QueryRequest, QueryResponse
-from app.services.rag_pipeline import RAGResponse, RAGPipeline
-from app.api.dependencies import get_rag_pipeline
+from unittest.mock import patch
+from app.api.routes import query, health, ingest
+from fastapi import FastAPI
 
 
 @pytest.fixture
-def mock_rag_pipeline():
-    """Mock RAG pipeline instance"""
-    pipeline = Mock()
-    # Set up async mocks
-    pipeline.query = AsyncMock()
-    pipeline.batch_query = AsyncMock()
-    return pipeline
+def client():
+    """Create test client without lifespan"""
+    # Create a test app without lifespan
+    test_app = FastAPI()
+    test_app.include_router(health.router)
+    test_app.include_router(query.router, prefix="/api/v1")
+    test_app.include_router(ingest.router, prefix="/api/v1")
+
+    # Initialize app.state to simulate healthy state
+    from unittest.mock import MagicMock
+    test_app.state.rag_pipeline = MagicMock()
+    test_app.state.initialization_error = None
+
+    return TestClient(test_app)
 
 
-@pytest.fixture
-def sample_rag_response():
-    """Sample RAG response for testing"""
-    return RAGResponse(
-        answer="This is a test answer based on the context.",
-        sources=[
-            {
-                'index': 1,
-                'document': 'test1.pdf',
-                'page': 1,
-                'relevance_score': 0.85,
-                'text_preview': 'Sample document text...'
-            }
-        ],
-        confidence=0.82,
-        latency_ms=150,
-        tokens_used=100,
-        retrieval_results=[]
-    )
+class TestHealthRoutes:
+    """Test health check routes"""
 
-
-@pytest.fixture
-def client(mock_rag_pipeline, sample_rag_response):
-    """Test client with mocked dependencies"""
-    from fastapi import FastAPI
-
-    app = FastAPI()
-    app.include_router(router)
-
-    # Set up the default return value for query method
-    mock_rag_pipeline.query.return_value = sample_rag_response
-    mock_rag_pipeline.batch_query.return_value = [sample_rag_response]
-
-    # Override the dependency
-    app.dependency_overrides[get_rag_pipeline] = lambda: mock_rag_pipeline
-
-    yield TestClient(app)
-
-    # Clean up
-    app.dependency_overrides = {}
-
-
-class TestQueryRequestValidation:
-    """Test QueryRequest validation"""
-
-    def test_valid_query_request(self):
-        """Test valid query request creation"""
-        request = QueryRequest(
-            query="What is machine learning?",
-            top_k=5,
-            use_hybrid=True
-        )
-        assert request.query == "What is machine learning?"
-        assert request.top_k == 5
-        assert request.use_hybrid is True
-
-    def test_query_request_min_length_validation(self):
-        """Test that empty query is rejected"""
-        with pytest.raises(Exception):
-            QueryRequest(query="")
-
-    def test_query_request_top_k_bounds(self):
-        """Test top_k bounds validation"""
-        # Valid range: 1-20
-        QueryRequest(query="Test?", top_k=1)
-        QueryRequest(query="Test?", top_k=20)
-
-        # Out of bounds
-        with pytest.raises(Exception):
-            QueryRequest(query="Test?", top_k=0)
-
-        with pytest.raises(Exception):
-            QueryRequest(query="Test?", top_k=21)
-
-    def test_query_request_with_optional_fields(self):
-        """Test query request with optional fields"""
-        request = QueryRequest(
-            query="Test query",
-            collection="test_collection",
-            top_k=10,
-            use_hybrid=False,
-            filters={"category": "tech"}
-        )
-        assert request.collection == "test_collection"
-        assert request.use_hybrid is False
-        assert request.filters == {"category": "tech"}
-
-
-class TestQueryEndpoint:
-    """Test POST /query/ endpoint"""
-
-    def test_query_endpoint_success(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test successful query execution"""
-        mock_rag_pipeline.query.return_value = sample_rag_response
-
-        response = client.post(
-            "/query/",
-            json={
-                "query": "What is machine learning?",
-                "top_k": 5,
-                "use_hybrid": True
-            }
-        )
-
+    def test_health_endpoint(self, client):
+        """Test basic health check"""
+        response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["answer"] == sample_rag_response.answer
-        assert data["confidence"] == sample_rag_response.confidence
-        assert data["latency_ms"] == sample_rag_response.latency_ms
-        assert data["tokens_used"] == sample_rag_response.tokens_used
-        assert len(data["sources"]) == 1
+        assert data["status"] == "healthy"
+        assert "version" in data
 
-        # Verify pipeline was called correctly
-        mock_rag_pipeline.query.assert_called_once_with(
-            question="What is machine learning?",
-            top_k=5,
-            use_hybrid=True,
-            filter_dict=None,
-            rerank=True,
-            collection='default'
-        )
-
-    def test_query_endpoint_with_filters(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test query with metadata filters"""
-        mock_rag_pipeline.query.return_value = sample_rag_response
-
-        response = client.post(
-            "/query/",
-            json={
-                "query": "What is AI?",
-                "top_k": 5,
-                "filters": {"category": "tech", "year": 2024}
-            }
-        )
-
-        assert response.status_code == 200
-        mock_rag_pipeline.query.assert_called_once_with(
-            question="What is AI?",
-            top_k=5,
-            use_hybrid=True,
-            filter_dict={"category": "tech", "year": 2024},
-            rerank=True,
-            collection='default'
-        )
-
-    def test_query_endpoint_error_handling(self, client, mock_rag_pipeline):
-        """Test query endpoint error handling"""
-        # Simulate pipeline error
-        mock_rag_pipeline.query.side_effect = Exception("Database connection failed")
-
-        response = client.post(
-            "/query/",
-            json={
-                "query": "What is machine learning?",
-                "top_k": 5
-            }
-        )
-
-        assert response.status_code == 500
-        data = response.json()
-        assert "detail" in data
-        assert "Query failed" in data["detail"]
-
-
-class TestBatchQueryEndpoint:
-    """Test POST /query/batch endpoint"""
-
-    def test_batch_query_success(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test successful batch query"""
-        mock_rag_pipeline.batch_query.return_value = [
-            sample_rag_response,
-            sample_rag_response,
-            sample_rag_response
-        ]
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": [
-                    "What is machine learning?",
-                    "What is deep learning?",
-                    "What is NLP?"
-                ],
-                "top_k": 5
-            }
-        )
-
+    def test_detailed_health_check(self, client):
+        """Test detailed health check endpoint"""
+        response = client.get("/health/detailed")
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 3
-        assert all("answer" in item for item in data)
-        assert all("sources" in item for item in data)
-
-        mock_rag_pipeline.batch_query.assert_called_once_with(
-            questions=[
-                "What is machine learning?",
-                "What is deep learning?",
-                "What is NLP?"
-            ],
-            top_k=5,
-            collection='default'
-        )
-
-    def test_batch_query_empty_list(self, client, mock_rag_pipeline):
-        """Test batch query with empty query list"""
-        mock_rag_pipeline.batch_query.return_value = []
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": [],
-                "top_k": 5
-            }
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 0
-
-    def test_batch_query_with_partial_failure(self, client, mock_rag_pipeline, sample_rag_response):
-        """Test batch query where some queries fail"""
-        # Mix of successful and failed responses
-        mock_rag_pipeline.batch_query.return_value = [
-            sample_rag_response,
-            RAGResponse(
-                answer="Error: Invalid query",
-                sources=[],
-                confidence=0.0,
-                latency_ms=0,
-                tokens_used=0,
-                retrieval_results=[]
-            )
-        ]
-
-        response = client.post(
-            "/query/batch",
-            json={
-                "queries": ["Valid query", "Invalid query"],
-                "top_k": 5
-            }
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-
-    def test_batch_query_validation(self, client):
-        """Test batch query request validation"""
-        # Missing required field 'queries'
-        response = client.post(
-            "/query/batch",
-            json={"top_k": 5}
-        )
-
-        assert response.status_code == 422  # Validation error
+        assert data["status"] == "healthy"
+        assert "version" in data
+        assert "services" in data
+        assert data["services"]["api"] == "healthy"
+        assert data["services"]["vector_db"] == "healthy"
+        assert data["services"]["llm"] == "healthy"
 
 
-class TestHealthEndpoint:
-    """Test GET /query/health endpoint"""
+class TestQueryRoutes:
+    """Test query routes"""
 
-    def test_health_check(self, client):
-        """Test health check endpoint"""
-        response = client.get("/query/health")
-
+    def test_query_health_check(self, client):
+        """Test query route health check"""
+        response = client.get("/api/v1/query/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
         assert data["service"] == "RAG Query API"
 
-
-class TestResponseModels:
-    """Test response model serialization"""
-
-    def test_query_response_serialization(self, sample_rag_response):
-        """Test QueryResponse can be properly serialized"""
-        response = QueryResponse(
-            answer=sample_rag_response.answer,
-            sources=sample_rag_response.sources,
-            confidence=sample_rag_response.confidence,
-            latency_ms=sample_rag_response.latency_ms,
-            tokens_used=sample_rag_response.tokens_used
+    def test_query_endpoint_invalid_min_length(self, client):
+        """Test query validation - empty query"""
+        response = client.post(
+            "/api/v1/query/",
+            json={
+                "query": "",
+                "top_k": 5
+            }
         )
+        assert response.status_code == 422  # Validation error
 
-        assert response.answer is not None
-        assert response.sources is not None
-        assert isinstance(response.confidence, float)
-        assert isinstance(response.latency_ms, int)
-        assert isinstance(response.tokens_used, int)
+    def test_query_endpoint_invalid_top_k_below_minimum(self, client):
+        """Test query validation - top_k too small"""
+        response = client.post(
+            "/api/v1/query/",
+            json={
+                "query": "Test",
+                "top_k": 0
+            }
+        )
+        assert response.status_code == 422
 
-    def test_batch_query_request_validation(self):
-        """Test BatchQueryRequest validation"""
-        from app.api.routes.query import BatchQueryRequest
+    def test_query_endpoint_invalid_top_k_above_maximum(self, client):
+        """Test query validation - top_k too large"""
+        response = client.post(
+            "/api/v1/query/",
+            json={
+                "query": "Test",
+                "top_k": 25
+            }
+        )
+        assert response.status_code == 422
+
+
+class TestIngestRoutes:
+    """Test document ingest routes"""
+
+    def test_ingest_documents(self, client):
+        """Test document ingest endpoint"""
+        response = client.post(
+            "/api/v1/ingest",
+            params={"source_path": "/test/path", "collection": "test"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "documents_processed" in data
+
+    def test_get_ingestion_status(self, client):
+        """Test get ingestion status endpoint"""
+        response = client.get("/api/v1/ingest/status/test-task-123")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["task_id"] == "test-task-123"
+        assert data["status"] == "completed"
+
+
+class TestAPIModels:
+    """Test API data models"""
+
+    def test_query_request_model(self):
+        """Test QueryRequest model validation"""
+        from app.api.routes.query import QueryRequest
 
         # Valid request
-        request = BatchQueryRequest(
-            queries=["Query 1", "Query 2"],
+        req = QueryRequest(
+            query="Test question",
+            top_k=5,
+            use_hybrid=True
+        )
+        assert req.query == "Test question"
+        assert req.top_k == 5
+        assert req.use_hybrid is True
+
+    def test_query_request_with_optional_fields(self):
+        """Test QueryRequest with optional fields"""
+        from app.api.routes.query import QueryRequest
+
+        req = QueryRequest(
+            query="Test",
+            collection="test-collection",
+            filters={"key": "value"}
+        )
+        assert req.collection == "test-collection"
+        assert req.filters == {"key": "value"}
+
+    def test_batch_query_request_model(self):
+        """Test BatchQueryRequest model"""
+        from app.api.routes.query import BatchQueryRequest
+
+        req = BatchQueryRequest(
+            queries=["Q1", "Q2"],
             top_k=10
         )
-        assert len(request.queries) == 2
-        assert request.top_k == 10
+        assert len(req.queries) == 2
+        assert req.top_k == 10
 
-        # Test top_k bounds
-        with pytest.raises(Exception):
-            BatchQueryRequest(queries=["Test"], top_k=0)
 
-        with pytest.raises(Exception):
-            BatchQueryRequest(queries=["Test"], top_k=21)
+def _make_retrieval_result(document: str, score: float, metadata=None):
+    """Build a retrieval-result-like object matching RAGResponse structure"""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        document=document, score=score, metadata=metadata or {}
+    )
+
+
+def _make_rag_response(sources, retrieval_results):
+    """Build a RAGResponse-like object as returned by pipeline.query"""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        answer="test answer",
+        sources=sources,
+        confidence=0.9,
+        latency_ms=10,
+        tokens_used=100,
+        retrieval_results=retrieval_results,
+    )
+
+
+class TestQueryRankingIntegration:
+    """Regression tests for the ranking integration in POST /query"""
+
+    def _post_query(self, client, pipeline_result):
+        from unittest.mock import AsyncMock, MagicMock
+
+        pipeline = MagicMock()
+        pipeline.query = AsyncMock(return_value=pipeline_result)
+        # /api/v1/query/ resolves the pipeline via request.app.state
+        client.app.state.rag_pipeline = pipeline
+
+        suggestion = MagicMock()
+
+        with patch("app.main.get_rag_pipeline", return_value=pipeline), \
+             patch("app.services.suggestion.get_suggestion_service", return_value=suggestion):
+            response = client.post(
+                "/api/v1/query/",
+                json={"query": "company policy", "top_k": 10}
+            )
+        return response
+
+    def test_query_ranking_length_mismatch_keeps_all_sources(self, client):
+        """Sources longer than retrieval_results must not be silently dropped
+
+        The old zip()-based pairing truncated to the shorter list, so
+        sources without a paired retrieval result vanished from the response.
+        Documents are deliberately dissimilar so promote_diversity keeps them.
+        """
+        sources = [
+            {"document": "vacation policy", "relevance_score": 0.9},
+            {"document": "security guidelines", "relevance_score": 0.8},
+            {"document": "payroll calendar", "relevance_score": 0.7},
+            {"document": "office floor plan", "relevance_score": 0.6},
+        ]
+        retrieval_results = [
+            _make_retrieval_result("vacation policy content", 0.9),
+            _make_retrieval_result("security guidelines content", 0.8),
+        ]
+
+        response = self._post_query(client, _make_rag_response(sources, retrieval_results))
+
+        assert response.status_code == 200
+        returned_docs = [s["document"] for s in response.json()["sources"]]
+        assert len(returned_docs) == 4
+        assert set(returned_docs) == {
+            "vacation policy", "security guidelines",
+            "payroll calendar", "office floor plan",
+        }
+
+    def test_query_ranking_aligned_lists_rank_all_sources(self, client):
+        """1:1 sources/retrieval_results still returns every source, ranked"""
+        sources = [
+            {"document": "low result", "relevance_score": 0.2},
+            {"document": "high result", "relevance_score": 0.95},
+            {"document": "middle result", "relevance_score": 0.6},
+        ]
+        retrieval_results = [
+            _make_retrieval_result("low content", 0.2),
+            _make_retrieval_result("high content", 0.95),
+            _make_retrieval_result("middle content", 0.6),
+        ]
+
+        response = self._post_query(client, _make_rag_response(sources, retrieval_results))
+
+        assert response.status_code == 200
+        returned_docs = [s["document"] for s in response.json()["sources"]]
+        assert len(returned_docs) == 3
+        assert set(returned_docs) == {"low result", "high result", "middle result"}

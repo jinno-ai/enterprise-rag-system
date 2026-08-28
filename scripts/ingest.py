@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import sys
-import logging
 from pathlib import Path
 
 # Add parent directory to path
@@ -21,11 +20,6 @@ from app.services.document_loader import DocumentLoader, TextSplitter
 from app.core.embeddings import get_embedding_model
 from app.core.vectordb import get_vector_db
 from app.core.config import get_settings
-from app.core.logging_config import setup_logging, get_logger
-
-# Setup logging for CLI script
-setup_logging()
-logger = get_logger(__name__)
 
 
 def main():
@@ -72,41 +66,71 @@ def main():
         default="./data/faiss_index.bin",
         help="Path to FAISS index file (only for FAISS)"
     )
+    parser.add_argument(
+        "--transcribe-audio",
+        action="store_true",
+        help="Enable automatic transcription of audio files (requires openai-whisper)"
+    )
+    parser.add_argument(
+        "--audio-model-size",
+        type=str,
+        default="base",
+        choices=["tiny", "base", "small", "medium", "large"],
+        help="Whisper model size for audio transcription (default: base)"
+    )
+    parser.add_argument(
+        "--audio-language",
+        type=str,
+        default=None,
+        help="Language code for audio transcription (e.g., 'en', 'ja', 'zh'). Auto-detect if not specified"
+    )
 
     args = parser.parse_args()
 
-logger.info("Enterprise RAG System - Document Ingestion starting")
+    print("""
+╔══════════════════════════════════════════════════════════════╗
+║         Enterprise RAG System - Document Ingestion           ║
+╚══════════════════════════════════════════════════════════════╝
+    """)
 
     try:
         # Step 1: Load documents
-        logger.info(f"Loading documents from: {args.source} (recursive={args.recursive})")
+        print(f"📂 Loading documents from: {args.source}")
+        print(f"   Recursive: {args.recursive}")
 
         documents = DocumentLoader.load_directory(
             directory_path=args.source,
-            recursive=args.recursive
+            recursive=args.recursive,
+            transcribe_audio=args.transcribe_audio,
+            audio_model_size=args.audio_model_size
         )
 
         if not documents:
-            logger.error("No documents found!")
+            print("❌ No documents found!")
             sys.exit(1)
 
-        logger.info(f"Loaded {len(documents)} documents")
+        print(f"✅ Loaded {len(documents)} documents")
 
         # Step 2: Split documents into chunks
-        logger.info(f"Splitting documents (chunk_size={args.chunk_size}, overlap={args.chunk_overlap})")
+        print(f"\n📝 Splitting documents into chunks...")
+        print(f"   Chunk size: {args.chunk_size}")
+        print(f"   Chunk overlap: {args.chunk_overlap}")
+
         splitter = TextSplitter(
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap
         )
         chunks = splitter.split_documents(documents)
 
-        logger.info(f"Created {len(chunks)} chunks")
+        print(f"✅ Created {len(chunks)} chunks")
 
         # Step 3: Generate embeddings
-        logger.info("Generating embeddings...")
+        print(f"\n🧠 Generating embeddings...")
 
         settings = get_settings()
-        logger.info(f"Embedding model: {settings.embedding_model}")
+        print(f"   Model: {settings.embedding_model}")
+
+        embedding_model = get_embedding_model()
 
         # Generate embeddings in batches
         batch_size = 100
@@ -118,12 +142,13 @@ logger.info("Enterprise RAG System - Document Ingestion starting")
             embeddings = embedding_model.embed_texts(texts)
             all_embeddings.extend(embeddings)
 
-logger.info(f"Embedding progress: {min(i + batch_size, len(chunks))}/{len(chunks)}")
+            print(f"   Progress: {min(i + batch_size, len(chunks))}/{len(chunks)}")
 
-        logger.info(f"Generated {len(all_embeddings)} embeddings")
+        print(f"✅ Generated {len(all_embeddings)} embeddings")
 
         # Step 4: Store in vector database
-        logger.info(f"Storing in vector database (type={args.db_type})")
+        print(f"\n💾 Storing in vector database...")
+        print(f"   Database type: {args.db_type}")
 
         if args.db_type == "faiss":
             vector_db = get_vector_db(db_type="faiss", index_path=args.index_path)
@@ -131,7 +156,7 @@ logger.info(f"Embedding progress: {min(i + batch_size, len(chunks))}/{len(chunks
 
             # Create index if it doesn't exist
             if vector_db.index is None:
-                logger.info(f"Creating new FAISS index (dimension: {embedding_model.dimension})")
+                print(f"   Creating new FAISS index (dimension: {embedding_model.dimension})")
                 vector_db.create_index(dimension=embedding_model.dimension)
 
         elif args.db_type == "pinecone":
@@ -160,30 +185,38 @@ logger.info(f"Embedding progress: {min(i + batch_size, len(chunks))}/{len(chunks
 
         # Save FAISS index
         if args.db_type == "faiss" and hasattr(vector_db, 'save'):
-            logger.info(f"Saving index to: {args.index_path}")
+            print(f"   Saving index to: {args.index_path}")
             vector_db.save(args.index_path)
 
         # Step 5: Summary
-        logger.info(
-            f"INGESTION COMPLETE - Documents: {len(documents)}, "
-            f"Chunks: {len(chunks)}, Embeddings: {len(all_embeddings)}, "
-            f"Collection: {args.collection}, Database: {args.db_type}"
-        )
+        print("\n" + "="*60)
+        print("✅ INGESTION COMPLETE!")
+        print("="*60)
+        print(f"Documents processed: {len(documents)}")
+        print(f"Chunks created: {len(chunks)}")
+        print(f"Embeddings generated: {len(all_embeddings)}")
+        print(f"Collection: {args.collection}")
+        print(f"Database: {args.db_type}")
+        print("="*60)
 
         # Get stats
         stats = vector_db.get_stats()
-        logger.info(
-            f"Database stats - Total vectors: {stats.get('total_vectors', 'N/A')}, "
-            f"Dimension: {stats.get('dimension', 'N/A')}"
-        )
+        print(f"\nDatabase stats:")
+        print(f"  Total vectors: {stats.get('total_vectors', 'N/A')}")
+        print(f"  Dimension: {stats.get('dimension', 'N/A')}")
 
-        logger.info("Ready to query! Start the API server with: uvicorn app.main:app --reload")
+        print("\n🚀 Ready to query! Start the API server with:")
+        print("   uvicorn app.main:app --reload")
 
     except FileNotFoundError as e:
-        logger.error(f"File not found: {e}")
+        print(f"❌ Error: {e}")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Ingestion failed: {e}", exc_info=True)
+        print(f"❌ Ingestion failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

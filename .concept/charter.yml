@@ -1,0 +1,78 @@
+version: "1.0"
+
+product_goal:
+  north_star: "企業ナレッジベースに対する本番品質のRAG（検索強化生成）パイプラインを、マルチフォーマット取り込み・ハイブリッド検索・ランキング・ストリーミング回答で提供する（推定: README.md / IMPLEMENTATION_ROADMAP.md 由来）"
+  success_metrics:
+    - id: "MET-001"
+      name: "テストスイート健全性"
+      target: "pytest 全件 green（2026-08-28 05:29実測@HEAD c208aa7: 956 passed / 34 failed / 44 skipped — 回収コード統合の修復中、MS-004）"
+    - id: "MET-002"
+      name: "カバレッジ"
+      target: "pytest --cov 全体 ≥11%（ゲート）。2026-08-28実測 74.74%"
+    - id: "MET-003"
+      name: "ワークツリー安定性"
+      target: "テスト実行後に dirty tree を残さない（.coverage/htmlcov は ignore 済み）"
+  non_goals:
+    - "汎用チャットボットとしての利用"
+    - "RAG 以外の LLM ユースケース（要約・コード生成等）の本体組込み"
+
+milestones:
+  - id: "MS-001"
+    name: "コア RAG パイプライン"
+    intent: "取り込み→チャンキング→埋め込み→ハイブリッド検索→ランキング→回答生成の一貫動作"
+    deliverables:
+      - "app/services/rag_pipeline.py (RAGPipeline / StreamingRAGPipeline)"
+      - "app/core/vectordb.py (FAISS / Pinecone)"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_rag_pipeline.py"
+    priority: "P0"
+    status: "done"
+
+  - id: "MS-002"
+    name: "品質・安定性の維持（dirty tree 収束）"
+    intent: "テスト生成物によるワークツリー汚染と、回収コードの欠陥を除去し、継続的品質を守る"
+    deliverables:
+      - ".gitignore へのカバレッジ成果物追加 + tracked 解除（commit 1544a47）"
+      - "docs/dirty-tree-investigation.md による原因記録"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py::TestQueryRankingIntegration"
+    priority: "P1"
+    status: "done"
+
+  - id: "MS-003"
+    name: "バッチクエリのランキングペアリング修正"
+    intent: "/query/batch が単一クエリと同一の zip 欠落バグ（sources の silent drop）を残している（app/api/routes/query.py:229）。MS-002 と同一不変条件への違反"
+    deliverables:
+      - "app/api/routes/query.py バッチ経路の index ベース・ペアリング化"
+      - "バッチ経路の回帰テスト（sources 保持の件数アサーション）"
+    acceptance:
+      - type: "test"
+        target: "tests/unit/test_api_routes.py（バッチ用テスト追加）"
+    priority: "P1"
+    status: "planned"
+
+  - id: "MS-004"
+    name: "回収コード統合によるレッドテスト収束"
+    intent: "dirty-tree 回収チェーン (c6ac66b→c208aa7, 2026-08-28) が持ち込んだ統合欠陥を除去し、INV-TEST-001（全件 green）を回復する。ツリーは収束したがスイートが赤い状態はコミット可能状態ではない"
+    deliverables:
+      - "test_feature_14 (20件): batch_query の async 化への追従（await or pytest-asyncio）— INV-PIPE-002"
+      - "test_validation_middleware (4件): セキュリティ検知を 4xx 拒否に修正 — INV-SEC-001"
+      - "test_feature_02 (3件): CircuitBreaker OPEN→HALF_OPEN 遷移の修復 — INV-CB-001"
+      - "test_api_docs (2件): OpenAPI スキーマへの QueryRequest/QueryResponse 公開 — INV-API-003"
+      - "test_api_routes (2件): MS-002 受け入れテストの DI 注入修正 — INV-TEST-002"
+      - "test_feature_07 (2件) / test_config_and_schemas (1件): v1 検証経路と設定既定値の整合"
+    acceptance:
+      - type: "test"
+        target: "pytest 全件 green（現状 34 failed → 0）"
+    priority: "P1"
+    status: "active"
+
+work_policy:
+  default_mode: "commit"
+  iteration_budget:
+    max_cycles: 5
+    max_files_changed: 25
+  quality_gates:
+    must_pass: ["test"]
