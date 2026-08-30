@@ -33,6 +33,7 @@ prometheus-client==0.19.0
 prometheus-fastapi-instrumentator==6.0.0
 tenacity==8.2.3
 httpx==0.26.0
+cryptography
 
 # Batch processing (imported by tests/unit/test_batch_tasks.py)
 celery>=5.3.0
