@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 高度なドキュメント取り込み (Ingestion) による表・構造化データの抽出
+
+**タイトル:** Unstructured等の高度なライブラリを用いたマルチフォーマット解析と表構造保持の実装 (Epic E-02 / Story 2.1)
+
+**内容:**
+現在の `DocumentLoader` (`app/services/document_loader.py`) はシンプルなテキストおよび `pypdf` ベースの抽出を行っていますが、複雑なPDFやOffice文書 (DOCX, PPTX) 内の表構造やセクションレイアウトの保持が不十分です。検索精度およびRAGの回答品質向上のため、Unstructured.io や代替の高度パーサーを統合し、構造化データや表を正確にチャンキング・インデックス化できるように実装を行う必要があります。
+
+**タスク:**
+- [ ] `Unstructured` 統合用パーサーモジュールを `app/services/document_loader.py` または専用モジュールに実装する
+- [ ] PDF, DOCX, PPTX ファイルからの表 (Table) データ抽出および HTML/Markdown 表現保持機能を追加する
+- [ ] セマンティックチャンキング（文脈の切れ目での自動分割）を組み込む
+- [ ] 新機能に対する単体テスト (`tests/unit/test_document_loader.py`) を追加・拡充する
