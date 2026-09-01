@@ -4,13 +4,22 @@ Query API Routes
 This module defines API endpoints for querying the RAG system.
 """
 
+import logging
 from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 
 from app.services.rag_pipeline import RAGResponse, RAGPipeline
 from app.api.dependencies import get_rag_pipeline
 from app.core.rate_limit import limiter
+from app.services.streaming import create_streaming_response
+from app.services.metadata_search import MetadataSearchService, MetadataFilter, FilterOperator
+from app.services.suggestion import QuerySuggestionService, SuggestionRequest, get_suggestion_service
+from app.services.ranking import RankingConfig, RankingStrategy, rank_results
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -24,6 +33,10 @@ class QueryRequest(BaseModel):
     use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
     rerank: bool = Field(True, description="Apply cross-encoder re-ranking for better accuracy")
     filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
+    enable_autocorrect: bool = Field(False, description="Enable query spell correction")
+    user_id: Optional[str] = Field(None, description="Optional user identifier for query tracking")
+    enable_ranking: bool = Field(True, description="Enable advanced result ranking")
+    ranking_strategy: Optional[str] = Field(None, description="Ranking strategy: linear, exponential, rrf")
 
 
 class QueryResponse(BaseModel):
@@ -38,8 +51,13 @@ class QueryResponse(BaseModel):
 class BatchQueryRequest(BaseModel):
     """Request model for batch query endpoint"""
     queries: List[str] = Field(..., description="List of questions to ask")
-    collection: Optional[str] = None
-    top_k: int = Field(5, ge=1, le=20)
+    collection: Optional[str] = Field(None, description="Collection/namespace to search in")
+    top_k: int = Field(5, description="Number of documents to retrieve", ge=1, le=20)
+    use_hybrid: bool = Field(True, description="Use hybrid search (semantic + keyword)")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Metadata filters")
+    user_id: Optional[str] = Field(None, description="Optional user identifier for query tracking")
+    enable_ranking: bool = Field(True, description="Enable advanced result ranking")
+    ranking_strategy: Optional[str] = Field(None, description="Ranking strategy: linear, exponential, rrf")
 
 
 @router.post(
@@ -105,15 +123,105 @@ async def query(
         QueryResponse with answer and sources
     """
     try:
+        # Apply autocorrect if enabled
+        from app.services.autocorrect import AutocorrectService
+        from app.services.suggestion import get_suggestion_service
+
+        suggestion_service = get_suggestion_service()
+
+        query_to_process = query_req.query
+        if query_req.enable_autocorrect:
+            autocorrect_service = AutocorrectService()
+            autocorrect_result = autocorrect_service.correct(query_req.query)
+            query_to_process = autocorrect_result.corrected
+
+            # Log corrections if any were made
+            if autocorrect_result.was_corrected:
+                logger.info(
+                    f"Query autocorrected: '{query_req.query}' -> '{query_to_process}'",
+                    extra={
+                        "original": query_req.query,
+                        "corrected": query_to_process,
+                        "corrections": autocorrect_result.corrections
+                    }
+                )
+
         # Execute query
         result = await pipeline.query(
-            question=query_req.query,
+            question=query_to_process,
             top_k=query_req.top_k,
             use_hybrid=query_req.use_hybrid,
             filter_dict=query_req.filters,
             rerank=query_req.rerank,
             collection=query_req.collection or "default"
         )
+
+        # Apply advanced ranking if enabled
+        if query_req.enable_ranking and result.sources and result.retrieval_results:
+            try:
+                # Prepare results for ranking with proper indexing.
+                # Iterate over sources (not zip) so a length mismatch with
+                # retrieval_results never silently drops sources from the response.
+                ranking_results = []
+                for i, source in enumerate(result.sources):
+                    ret_result = result.retrieval_results[i] if i < len(result.retrieval_results) else None
+                    if ret_result is not None:
+                        ranking_results.append({
+                            "document": ret_result.document,
+                            "score": source.get("relevance_score", ret_result.score),
+                            "keyword_score": ret_result.metadata.get("keyword_score", ret_result.score * 0.8),
+                            "metadata": {**ret_result.metadata, "original_index": i}
+                        })
+                    else:
+                        # No paired retrieval result: rank from source data alone
+                        score = source.get("relevance_score", 0.0)
+                        ranking_results.append({
+                            "document": source.get("document", ""),
+                            "score": score,
+                            "keyword_score": score * 0.8,
+                            "metadata": {"original_index": i}
+                        })
+
+                # Create ranking configuration
+                ranking_config = None
+                if query_req.ranking_strategy:
+                    try:
+                        strategy = RankingStrategy(query_req.ranking_strategy.lower())
+                        ranking_config = RankingConfig(strategy=strategy)
+                    except ValueError:
+                        logger.warning(f"Invalid ranking strategy: {query_req.ranking_strategy}, using default")
+
+                # Apply ranking
+                ranked_results = rank_results(
+                    ranking_results,
+                    query=query_to_process,
+                    config=ranking_config,
+                    top_k=query_req.top_k
+                )
+
+                # Reorder sources based on ranking
+                ranked_sources = []
+                for ranked_item in ranked_results:
+                    original_index = ranked_item.get("metadata", {}).get("original_index")
+                    if original_index is not None and 0 <= original_index < len(result.sources):
+                        original_source = result.sources[original_index].copy()
+                        original_source["relevance_score"] = ranked_item.get("final_score", original_source.get("relevance_score", 0))
+                        ranked_sources.append(original_source)
+
+                if ranked_sources:
+                    result.sources = ranked_sources
+                    logger.info(f"Applied ranking to {len(ranked_sources)} results")
+
+            except Exception as ranking_error:
+                # Don't fail query if ranking fails
+                logger.warning(f"Result ranking failed: {ranking_error}, using original order")
+
+        # Track query for future suggestions
+        try:
+            suggestion_service.track_query(query_req.query, query_req.user_id)
+        except Exception as tracking_error:
+            # Don't fail the query if tracking fails
+            logger.warning(f"Query tracking failed: {tracking_error}")
 
         return QueryResponse(
             answer=result.answer,
@@ -189,12 +297,75 @@ async def batch_query(
         List of QueryResponse objects
     """
     try:
+        from app.services.suggestion import get_suggestion_service
+
+        suggestion_service = get_suggestion_service()
+
+
         # Execute batch query
         results = await pipeline.batch_query(
             questions=batch_req.queries,
             top_k=batch_req.top_k,
-            collection=batch_req.collection or "default"
+            collection=batch_req.collection or "default",
+            use_hybrid=batch_req.use_hybrid,
+            filter_dict=batch_req.filters
         )
+
+        # Apply ranking to each result if enabled
+        if batch_req.enable_ranking:
+            ranking_config = None
+            if batch_req.ranking_strategy:
+                try:
+                    strategy = RankingStrategy(batch_req.ranking_strategy.lower())
+                    ranking_config = RankingConfig(strategy=strategy)
+                except ValueError:
+                    logger.warning(f"Invalid ranking strategy: {batch_req.ranking_strategy}, using default")
+
+            for i, result in enumerate(results):
+                if result.sources and result.retrieval_results:
+                    try:
+                        # Prepare results for ranking
+                        ranking_results = []
+                        for source, ret_result in zip(result.sources, result.retrieval_results):
+                            ranking_results.append({
+                                "document": ret_result.document,
+                                "score": source.get("relevance_score", ret_result.score),
+                                "keyword_score": ret_result.metadata.get("keyword_score", ret_result.score * 0.8),
+                                "metadata": {**ret_result.metadata, "original_index": len(ranking_results)}
+                            })
+
+                        # Apply ranking
+                        ranked_results = rank_results(
+                            ranking_results,
+                            query=batch_req.queries[i],
+                            config=ranking_config,
+                            top_k=batch_req.top_k
+                        )
+
+                        # Reorder sources based on ranking
+                        ranked_sources = []
+                        for ranked_item in ranked_results:
+                            original_index = ranked_item.get("metadata", {}).get("original_index")
+                            if original_index is not None and 0 <= original_index < len(result.sources):
+                                original_source = result.sources[original_index].copy()
+                                original_source["relevance_score"] = ranked_item.get("final_score", original_source.get("relevance_score", 0))
+                                ranked_sources.append(original_source)
+
+                        if ranked_sources:
+                            result.sources = ranked_sources
+
+                    except Exception as ranking_error:
+                        # Don't fail batch if ranking one result fails
+                        logger.warning(f"Result ranking failed for query {i}: {ranking_error}, using original order")
+
+        # Track all queries for future suggestions
+        for query in batch_req.queries:
+            try:
+                suggestion_service.track_query(query, batch_req.user_id)
+            except Exception as tracking_error:
+                # Don't fail the batch if tracking fails
+                logger.warning(f"Query tracking failed for batch query: {tracking_error}")
+
 
         responses = []
         for result in results:
@@ -215,6 +386,86 @@ async def batch_query(
         )
 
 
+@router.post("/stream")
+async def query_stream(request: QueryRequest):
+    """
+    Query the RAG system with streaming response using Server-Sent Events (SSE)
+
+    This endpoint streams the query response in real-time, providing:
+    - Retrieval status and results
+    - Progressive answer generation (token-by-token using real OpenAI streaming)
+    - Final metadata (confidence, tokens, sources)
+
+    Args:
+        request: Query request with question and parameters
+
+    Returns:
+        StreamingResponse with SSE format
+
+    Example:
+        ```python
+        import requests
+
+        response = requests.post(
+            "http://localhost:8000/api/v1/query/stream",
+            json={"query": "What is the company policy?", "top_k": 5},
+            stream=True
+        )
+
+        for line in response.iter_lines():
+            if line:
+                print(line.decode('utf-8'))
+        ```
+    """
+    try:
+        from app.main import get_rag_pipeline
+        from fastapi import Request
+
+        pipeline = get_rag_pipeline()
+
+        # Create streaming response with client disconnection handling
+        async def generate():
+            try:
+                async for chunk in create_streaming_response(
+                    pipeline=pipeline,
+                    query=request.query,
+                    top_k=request.top_k,
+                    use_hybrid=request.use_hybrid,
+                    filter_dict=request.filters,
+                    enable_token_streaming=True
+                ):
+                    # Check if client disconnected (requires FastAPI Request object)
+                    # For now, we'll catch GeneratorExit when client disconnects
+                    yield chunk
+            except GeneratorExit:
+                # Client disconnected
+                logger.info("Stream closed by client")
+            except Exception as e:
+                logger.error(f"Error in stream generation: {e}")
+                # Yield error chunk before closing
+                from app.services.streaming import StreamChunk
+                yield StreamChunk(
+                    type="error",
+                    content=str(e)
+                ).to_sse()
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Streaming query failed: {str(e)}"
+        )
+
+
 @router.get(
     "/health",
     status_code=status.HTTP_200_OK,
@@ -232,3 +483,290 @@ async def health_check() -> Dict[str, str]:
         "status": "healthy",
         "service": "RAG Query API"
     }
+
+
+class MetadataSearchRequest(BaseModel):
+    """Request model for metadata search endpoint"""
+    query: str = Field(..., description="Search query", min_length=1)
+    filters: Dict[str, Any] = Field(..., description="Metadata filters")
+    top_k: int = Field(5, description="Number of results", ge=1, le=20)
+    match_all: bool = Field(True, description="If True, all filters must match (AND). If False, any filter can match (OR)")
+    use_semantic: bool = Field(True, description="Use semantic search")
+
+
+class MetadataSearchResponse(BaseModel):
+    """Response model for metadata search endpoint"""
+    results: List[Dict[str, Any]]
+    total_found: int
+    query: str
+
+
+@router.post("/metadata", response_model=MetadataSearchResponse, status_code=status.HTTP_200_OK)
+async def search_by_metadata(request: MetadataSearchRequest) -> MetadataSearchResponse:
+    """
+    Search documents with advanced metadata filtering
+
+    This endpoint provides flexible metadata filtering capabilities with support for:
+    - Equality operators: eq, ne
+    - Comparison operators: gt, gte, lt, lte
+    - List operators: in, nin
+    - String operators: contains, regex
+    - Existence operator: exists
+
+    Args:
+        request: Metadata search request with query and filters
+
+    Returns:
+        MetadataSearchResponse with filtered results
+
+    Examples:
+        Simple equality filter:
+        ```json
+        {
+            "query": "company policy",
+            "filters": {"department": "HR"}
+        }
+        ```
+
+        Complex filter with operators:
+        ```json
+        {
+            "query": "remote work",
+            "filters": {
+                "department": {"operator": "eq", "value": "HR"},
+                "year": {"operator": "gte", "value": 2023}
+            }
+        }
+        ```
+
+        OR logic (match any filter):
+        ```json
+        {
+            "query": "benefits",
+            "filters": {
+                "category": "compensation"
+            },
+            "match_all": false
+        }
+        ```
+    """
+    try:
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
+        # Create metadata search service
+        metadata_service = MetadataSearchService(
+            vector_db=pipeline.retriever.vector_db,
+            embedding_model=pipeline.embedding_model
+        )
+
+        # Build filters from dictionary
+        filter_list = metadata_service.build_filter_from_dict(request.filters)
+
+        if not filter_list:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid filters provided"
+            )
+
+        # Perform metadata search
+        results = metadata_service.search_by_metadata(
+            query=request.query,
+            filters=filter_list,
+            top_k=request.top_k,
+            match_all=request.match_all,
+            use_semantic=request.use_semantic
+        )
+
+        # Convert results to response format
+        response_data = [
+            {
+                "id": r.id,
+                "score": r.score,
+                "metadata": r.metadata,
+                "text": r.text,
+                "matched_filters": r.matched_filters
+            }
+            for r in results
+        ]
+
+        return MetadataSearchResponse(
+            results=response_data,
+            total_found=len(response_data),
+            query=request.query
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid filter specification: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Metadata search failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Metadata search failed: {str(e)}"
+        )
+
+
+class MetadataValuesRequest(BaseModel):
+    """Request model for getting unique metadata values"""
+    field: str = Field(..., description="Metadata field name")
+    query: Optional[str] = Field(None, description="Optional query to filter results")
+    top_k: int = Field(100, description="Number of documents to scan", ge=1, le=1000)
+
+
+class MetadataValuesResponse(BaseModel):
+    """Response model for unique metadata values"""
+    field: str
+    values: List[Any]
+    total: int
+
+
+@router.post("/metadata/values", response_model=MetadataValuesResponse, status_code=status.HTTP_200_OK)
+async def get_metadata_values(request: MetadataValuesRequest) -> MetadataValuesResponse:
+    """
+    Get unique values for a metadata field
+
+    This endpoint helps discover available metadata values for filtering.
+    Useful for building filter UIs or understanding document metadata.
+
+    Args:
+        request: Request with field name and optional query
+
+    Returns:
+        List of unique values for the specified field
+
+    Example:
+        ```json
+        {
+            "field": "department",
+            "query": "company policy"
+        }
+        ```
+    """
+    try:
+        from app.main import get_rag_pipeline
+
+        pipeline = get_rag_pipeline()
+
+        # Create metadata search service
+        metadata_service = MetadataSearchService(
+            vector_db=pipeline.retriever.vector_db,
+            embedding_model=pipeline.embedding_model
+        )
+
+        # Get unique values
+        values = metadata_service.get_unique_metadata_values(
+            field=request.field,
+            query=request.query,
+            top_k=request.top_k
+        )
+
+        return MetadataValuesResponse(
+            field=request.field,
+            values=values,
+            total=len(values)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get metadata values: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get metadata values: {str(e)}"
+        )
+
+
+class SuggestionRequestModel(BaseModel):
+    """Request model for query suggestion endpoint"""
+    partial_query: str = Field("", description="Partial query string for completion", min_length=0)
+    max_suggestions: int = Field(10, description="Maximum number of suggestions", ge=1, le=50)
+    include_history: bool = Field(True, description="Include user's historical queries")
+    include_trending: bool = Field(True, description="Include trending queries")
+    user_id: Optional[str] = Field(None, description="Optional user identifier for personalization")
+
+
+class SuggestionResponse(BaseModel):
+    """Response model for query suggestion endpoint"""
+    suggestions: List[Dict[str, Any]]
+    total: int
+
+
+@router.post("/suggestions", response_model=SuggestionResponse, status_code=status.HTTP_200_OK)
+async def get_suggestions(request: SuggestionRequestModel) -> SuggestionResponse:
+    """
+    Get intelligent query suggestions
+
+    This endpoint provides query suggestions based on:
+    - Content analysis: Completions based on query templates
+    - User history: Personalized suggestions from past queries
+    - Trending: Popular queries across all users
+
+    Args:
+        request: Suggestion request with parameters
+
+    Returns:
+        List of query suggestions with metadata
+
+    Examples:
+        Get completions for partial query:
+        ```json
+        {
+            "partial_query": "company policy",
+            "max_suggestions": 10
+        }
+        ```
+
+        Get personalized suggestions:
+        ```json
+        {
+            "partial_query": "remote",
+            "max_suggestions": 10,
+            "include_history": true,
+            "user_id": "user123"
+        }
+        ```
+
+        Get trending queries:
+        ```json
+        {
+            "max_suggestions": 10,
+            "include_trending": true
+        }
+        ```
+    """
+    try:
+        # Get suggestion service
+        suggestion_service = get_suggestion_service()
+
+        # Create suggestion request
+        suggestion_request = SuggestionRequest(
+            partial_query=request.partial_query,
+            max_suggestions=request.max_suggestions,
+            include_history=request.include_history,
+            include_trending=request.include_trending,
+            user_id=request.user_id
+        )
+
+        # Get suggestions
+        suggestions = suggestion_service.get_suggestions(suggestion_request)
+
+        logger.info(
+            f"Generated {len(suggestions)} suggestions for query: {request.partial_query[:50]}..."
+        )
+
+        return SuggestionResponse(
+            suggestions=suggestions,
+            total=len(suggestions)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate suggestions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate suggestions: {str(e)}"
+        )

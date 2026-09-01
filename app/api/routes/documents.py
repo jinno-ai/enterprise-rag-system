@@ -2,21 +2,39 @@
 Document Management API Routes
 
 This module defines API endpoints for document ingestion and management.
+Supports both synchronous and asynchronous processing modes.
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import tempfile
 import os
+import asyncio
 import uuid
+import logging
 
-from app.core.logging_config import get_logger
-
-
-logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
+
+
+def validate_path_safety(file_path: str) -> None:
+    """
+    Validate that a path doesn't contain path traversal attempts.
+
+    Args:
+        file_path: The path to validate
+
+    Raises:
+        HTTPException: If path contains traversal attempts
+    """
+    if ".." in file_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid path: path traversal detected"
+        )
 
 
 class DocumentIngestRequest(BaseModel):
@@ -25,6 +43,12 @@ class DocumentIngestRequest(BaseModel):
     collection: Optional[str] = Field(None, description="Collection name")
     chunk_size: int = Field(1000, description="Chunk size for splitting")
     chunk_overlap: int = Field(200, description="Chunk overlap")
+    enable_deduplication: bool = Field(False, description="Enable document deduplication")
+    deduplication_strategy: str = Field("exact", description="Deduplication strategy: exact or similarity")
+    # Audio transcription settings
+    transcribe_audio: bool = Field(False, description="Enable automatic transcription of audio files")
+    audio_model_size: str = Field("base", description="Whisper model size for audio transcription")
+    audio_language: Optional[str] = Field(None, description="Language code for audio transcription (e.g., 'en', 'ja'). Auto-detect if not specified")
 
 
 class DocumentIngestResponse(BaseModel):
@@ -72,62 +96,17 @@ class BatchIngestResponse(BaseModel):
 
 
 class BatchStatusResponse(BaseModel):
-    """Response model for batch processing status"""
+    """Request model for batch processing status"""
     task_id: str
     status: str = Field(..., description="Task state (PENDING/PROGRESS/SUCCESS/FAILURE)")
     result: Optional[Dict[str, Any]] = Field(None, description="Processing results if complete")
     error: Optional[str] = Field(None, description="Error message if failed")
 
 
-@router.post(
-    "/ingest",
-    response_model=DocumentIngestResponse,
-    summary="Ingest Documents from Directory / ディレクトリからドキュメントをインジェスト",
-    description="Load, process, and store documents from a directory into the vector database / ディレクトリからドキュメントを読み込み、処理してベクトルデータベースに保存します",
-    response_description="Document ingestion statistics and status / ドキュメントインジェストの統計とステータス",
-    responses={
-        200: {"description": "Documents ingested successfully / ドキュメントインジェスト成功"},
-        400: {"description": "No documents found or invalid parameters / ドキュメントが見つからないか不正なパラメータ"},
-        404: {"description": "Directory not found / ディレクトリが見つからない"},
-        500: {"description": "Ingestion failed / インジェスト失敗"}
-    },
-    tags=["Documents"]
-)
+@router.post("/ingest", response_model=DocumentIngestResponse)
 async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResponse:
     """
-    Ingest documents from a directory / ディレクトリからドキュメントをインジェストします
-
-    ## Supported Formats / 対応フォーマット
-
-    - **PDF**: `.pdf` files using PyPDF2 / PyPDF2を使用したPDFファイル
-    - **Markdown**: `.md` files / Markdownファイル
-    - **Text**: `.txt` files / テキストファイル
-    - **HTML**: `.html` files (with html2text) / HTMLファイル（html2text使用）
-
-    ## Process / 処理フロー
-
-    1. **Load**: Read documents from source path / ソースパスからドキュメントを読み込み
-    2. **Split**: Chunk documents with overlap / ドキュメントをオーバーラップ付きでチャンク分割
-    3. **Embed**: Generate vector embeddings / ベクトル埋め込みを生成
-    4. **Store**: Save to vector database / ベクトルデータベースに保存
-
-    ## Parameters / パラメータ
-
-    - **source_path**: Path to directory containing documents / ドキュメントを含むディレクトリへのパス
-    - **collection**: Collection name for organization / 整理用のコレクション名
-    - **chunk_size**: Size of text chunks (100-4000) / テキストチャンクのサイズ (100-4000)
-    - **chunk_overlap**: Overlap between chunks (0-500) / チャンク間のオーバーラップ (0-500)
-
-    ## Example / 例
-
-    ```json
-    {
-      "source_path": "./data/hr-policies",
-      "collection": "hr-policies",
-      "chunk_size": 1000,
-      "chunk_overlap": 200
-    }
-    ```
+    Ingest documents from a directory
 
     Args:
         request: Ingestion request with source path and parameters
@@ -137,22 +116,59 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
     """
     try:
         from app.services.document_loader import DocumentLoader, TextSplitter
+        from app.services.preview import PreviewGenerator, get_preview_cache
         from app.core.embeddings import get_embedding_model
         from app.core.vectordb import get_vector_db
         from app.core.config import get_settings
-        
+
         settings = get_settings()
+
+        # Validate path safety before loading
+        validate_path_safety(request.source_path)
 
         # Load documents
         logger.info(f"Loading documents from: {request.source_path}")
-        documents = DocumentLoader.load_directory(request.source_path)
-        
+        documents = DocumentLoader.load_directory(
+            request.source_path,
+            transcribe_audio=request.transcribe_audio,
+            audio_model_size=request.audio_model_size
+        )
+
         if not documents:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No documents found in the specified path"
             )
-        
+
+        # Apply deduplication if enabled
+        if request.enable_deduplication:
+            logger.info(f"Deduplication enabled with strategy: {request.deduplication_strategy}")
+            from app.services.deduplication import get_deduplicator
+
+            deduplicator = get_deduplicator(strategy=request.deduplication_strategy)
+            documents, dedup_result = deduplicator.deduplicate(documents)
+
+            logger.info(
+                f"Deduplication complete: {dedup_result.unique_documents}/{dedup_result.total_documents} "
+                f"unique documents ({dedup_result.duplicates_removed} duplicates removed)"
+            )
+
+        # Generate previews for all documents
+        logger.info(f"Generating previews for {len(documents)} documents")
+        preview_generator = PreviewGenerator(max_preview_length=300)
+        preview_cache = get_preview_cache()
+
+        preview_count = 0
+        for doc in documents:
+            try:
+                preview = preview_generator.generate_preview(doc)
+                preview_cache.set(preview)
+                preview_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to generate preview for {doc.doc_id}: {e}")
+
+        logger.info(f"Successfully generated {preview_count}/{len(documents)} previews")
+
         # Split documents into chunks
         splitter = TextSplitter(
             chunk_size=request.chunk_size,
@@ -167,7 +183,7 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         embeddings = embedding_model.embed_texts(texts)
         
         # Store in vector database
-        vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
+        vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
 
         if vector_db.index is None:
             vector_db.create_index(dimension=embedding_model.dimension)
@@ -175,20 +191,24 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         ids = [chunk.doc_id for chunk in chunks]
         metadata = [chunk.metadata for chunk in chunks]
 
-        # Use collection from request
-        collection = request.collection or "default"
-        vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata, collection=collection)
+        vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
 
         # Save index
         if hasattr(vector_db, 'save'):
-            vector_db.save(settings.faiss_index_path)
+            vector_db.save("./data/faiss_index.bin")
         
+        # Build message with deduplication info if applicable
+        base_msg = f"Successfully ingested {len(documents)} documents"
+        if request.enable_deduplication:
+            base_msg += f" ({dedup_result.duplicates_removed} duplicates removed)"
+        base_msg += f" with {preview_count} previews"
+
         return DocumentIngestResponse(
             success=True,
             documents_processed=len(documents),
             chunks_created=len(chunks),
             collection=request.collection or "default",
-            message=f"Successfully ingested {len(documents)} documents"
+            message=base_msg
         )
     
     except FileNotFoundError as e:
@@ -203,56 +223,25 @@ async def ingest_documents(request: DocumentIngestRequest) -> DocumentIngestResp
         )
 
 
-@router.post(
-    "/upload",
-    response_model=DocumentIngestResponse,
-    summary="Upload Single Document / 単一ドキュメントアップロード",
-    description="Upload and ingest a single document file into the vector database / 単一のドキュメントファイルをアップロードしてベクトルデータベースにインジェストします",
-    response_description="Document ingestion statistics and status / ドキュメントインジェストの統計とステータス",
-    responses={
-        200: {"description": "Document uploaded and ingested successfully / ドキュメントアップロードとインジェスト成功"},
-        400: {"description": "Unsupported file type or invalid parameters / サポートされていないファイルタイプか不正なパラメータ"},
-        500: {"description": "Upload failed / アップロード失敗"}
-    },
-    tags=["Documents"]
-)
+@router.post("/upload", response_model=DocumentIngestResponse)
 async def upload_document(
     file: UploadFile = File(...),
     collection: Optional[str] = Form(None),
     chunk_size: int = Form(1000),
-    chunk_overlap: int = Form(200)
+    chunk_overlap: int = Form(200),
+    enable_deduplication: bool = Form(False),
+    deduplication_strategy: str = Form("exact")
 ) -> DocumentIngestResponse:
     """
-    Upload and ingest a single document / 単一のドキュメントをアップロードしてインジェストします
-
-    ## Supported File Types / 対応ファイルタイプ
-
-    - **PDF**: `.pdf` - PDF documents / PDFドキュメント
-    - **Markdown**: `.md` - Markdown files / Markdownファイル
-    - **Text**: `.txt` - Plain text files / テキストファイル
-
-    ## Form Data / フォームデータ
-
-    - **file**: The document file to upload (required) / アップロードするドキュメントファイル（必須）
-    - **collection**: Collection name (optional, default: "default") / コレクション名（オプション、デフォルト: "default"）
-    - **chunk_size**: Size of text chunks (optional, default: 1000) / テキストチャンクのサイズ（オプション、デフォルト: 1000）
-    - **chunk_overlap**: Overlap between chunks (optional, default: 200) / チャンク間のオーバーラップ（オプション、デフォルト: 200）
-
-    ## Example with curl / curl使用例
-
-    ```bash
-    curl -X POST "http://localhost:8000/api/v1/documents/upload" \
-      -F "file=@document.pdf" \
-      -F "collection=hr-policies" \
-      -F "chunk_size=1000" \
-      -F "chunk_overlap=200"
-    ```
+    Upload and ingest a single document
 
     Args:
         file: Uploaded file
         collection: Collection name
         chunk_size: Chunk size for splitting
         chunk_overlap: Chunk overlap
+        enable_deduplication: Enable document deduplication against existing docs
+        deduplication_strategy: Deduplication strategy (exact or similarity)
 
     Returns:
         DocumentIngestResponse with ingestion statistics
@@ -261,9 +250,6 @@ async def upload_document(
         from app.services.document_loader import DocumentLoader, TextSplitter
         from app.core.embeddings import get_embedding_model
         from app.core.vectordb import get_vector_db
-        from app.core.config import get_settings
-
-        settings = get_settings()
 
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
@@ -281,12 +267,51 @@ async def upload_document(
                 documents = [DocumentLoader.load_markdown(tmp_path)]
             elif file_ext == '.txt':
                 documents = [DocumentLoader.load_text_file(tmp_path)]
+            elif file_ext in {'.mp3', '.wav', '.mp4', '.m4a', '.webm', '.mpga', '.mpeg'}:
+                # Audio file - transcribe it
+                try:
+                    documents = [DocumentLoader.load_audio(
+                        tmp_path,
+                        model_size="base",
+                        language=None  # Auto-detect
+                    )]
+                except ImportError as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                        detail="Audio transcription requires openai-whisper. Install with: pip install openai-whisper"
+                    )
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Audio transcription failed: {str(e)}"
+                    )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unsupported file type: {file_ext}"
+                    detail=f"Unsupported file type: {file_ext}. Supported: pdf, md, txt, mp3, wav, m4a, webm, mp4"
                 )
-            
+
+            # Apply deduplication if enabled
+            if enable_deduplication:
+                logger.info(f"Deduplication enabled with strategy: {deduplication_strategy}")
+                from app.services.deduplication import get_deduplicator
+
+                deduplicator = get_deduplicator(strategy=deduplication_strategy)
+                documents, dedup_result = deduplicator.deduplicate(documents)
+
+                if len(documents) == 0:
+                    # All documents were duplicates
+                    os.remove(tmp_path)
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Document is a duplicate and was not ingested"
+                    )
+
+                logger.info(
+                    f"Deduplication complete: {dedup_result.unique_documents}/{dedup_result.total_documents} "
+                    f"unique documents ({dedup_result.duplicates_removed} duplicates removed)"
+                )
+
             # Split and embed
             splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
             chunks = splitter.split_documents(documents)
@@ -296,7 +321,7 @@ async def upload_document(
             embeddings = embedding_model.embed_texts(texts)
             
             # Store in vector database
-            vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
+            vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
 
             if vector_db.index is None:
                 vector_db.create_index(dimension=embedding_model.dimension)
@@ -304,19 +329,22 @@ async def upload_document(
             ids = [chunk.doc_id for chunk in chunks]
             metadata = [chunk.metadata for chunk in chunks]
 
-            # Use collection from request
-            collection_name = collection or "default"
-            vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata, collection=collection_name)
+            vector_db.upsert(vectors=embeddings, ids=ids, metadata=metadata)
 
             if hasattr(vector_db, 'save'):
-                vector_db.save(settings.faiss_index_path)
-            
+                vector_db.save("./data/faiss_index.bin")
+
+            # Build message with deduplication info if applicable
+            base_msg = f"Successfully uploaded and ingested {file.filename}"
+            if enable_deduplication:
+                base_msg += f" ({dedup_result.duplicates_removed} duplicate pages removed)"
+
             return DocumentIngestResponse(
                 success=True,
                 documents_processed=len(documents),
                 chunks_created=len(chunks),
                 collection=collection or "default",
-                message=f"Successfully uploaded and ingested {file.filename}"
+                message=base_msg
             )
         
         finally:
@@ -331,57 +359,23 @@ async def upload_document(
         )
 
 
-@router.get(
-    "/stats",
-    response_model=DocumentStats,
-    summary="Get Document Statistics / ドキュメント統計取得",
-    description="Retrieve statistics about ingested documents and collections / インジェストされたドキュメントとコレクションに関する統計を取得します",
-    response_description="Document statistics including counts and collections / ドキュメント数とコレクションを含む統計",
-    responses={
-        200: {"description": "Statistics retrieved successfully / 統計取得成功"},
-        500: {"description": "Failed to retrieve statistics / 統計取得失敗"}
-    },
-    tags=["Documents"]
-)
+@router.get("/stats", response_model=DocumentStats)
 async def get_stats() -> DocumentStats:
-    """Get statistics about ingested documents / インジェストされたドキュメントに関する統計を取得します
-
-    ## Returns / 戻り値
-
-    - **total_documents**: Total number of documents across all collections / すべてのコレクションのドキュメント総数
-    - **total_chunks**: Total number of chunks across all collections / すべてのコレクションのチャンク総数
-    - **collections**: List of collection names / コレクション名のリスト
-
-    ## Example Response / レスポンス例
-
-    ```json
-    {
-      "total_documents": 150,
-      "total_chunks": 2250,
-      "collections": ["default", "hr-policies", "tech-docs"]
-    }
-    ```
-    """
+    """Get statistics about ingested documents"""
     try:
         from app.core.vectordb import get_vector_db
-        from app.core.config import get_settings
 
-        settings = get_settings()
-
-        vector_db = get_vector_db(db_type="faiss", index_path=settings.faiss_index_path)
+        vector_db = get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")
         vector_db.connect()
-        
-        stats = vector_db.get_stats()
 
-        # Extract collection names from stats
-        collection_names = list(stats.get('collections', {}).keys())
+        stats = vector_db.get_stats()
 
         return DocumentStats(
             total_documents=stats.get('total_vectors', 0),
             total_chunks=stats.get('total_vectors', 0),
-            collections=collection_names if collection_names else ["default"]
+            collections=["default"]  # TODO: Implement multi-collection support
         )
-    
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -628,4 +622,616 @@ async def get_batch_status(task_id: str) -> BatchStatusResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve task status: {str(e)}"
+        )
+
+
+@router.get("/preview/{doc_id}")
+async def get_document_preview(doc_id: str) -> Dict[str, Any]:
+    """
+    Get cached preview for a document.
+
+    Args:
+        doc_id: Document identifier
+
+    Returns:
+        Document preview with metadata
+    """
+    try:
+        from app.services.preview import get_preview_cache
+
+        cache = get_preview_cache()
+        preview = cache.get(doc_id)
+
+        if not preview:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Preview not found for document: {doc_id}"
+            )
+
+        return {
+            "doc_id": preview.doc_id,
+            "preview_text": preview.preview_text,
+            "preview_length": preview.preview_length,
+            "original_length": preview.original_length,
+            "compression_ratio": round(preview.compression_ratio, 3),
+            "key_sentences": preview.key_sentences,
+            "metadata": preview.metadata,
+            "generated_at": preview.generated_at.isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get preview: {str(e)}"
+        )
+
+
+@router.delete("/preview/{doc_id}")
+async def invalidate_document_preview(doc_id: str) -> Dict[str, Any]:
+    """
+    Invalidate cached preview for a document.
+
+    Args:
+        doc_id: Document identifier
+
+    Returns:
+        Status of invalidation
+    """
+    try:
+        from app.services.preview import get_preview_cache
+
+        cache = get_preview_cache()
+        success = cache.invalidate(doc_id) if hasattr(cache, 'invalidate') else False
+
+        return {
+            "success": success,
+            "doc_id": doc_id,
+            "message": f"Preview for {doc_id} {'invalidated' if success else 'not found in cache'}"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to invalidate preview: {str(e)}"
+        )
+
+
+# Async processing endpoints
+
+class AsyncIngestRequest(BaseModel):
+    """Request model for async document ingestion"""
+    source_path: str = Field(..., description="Path to documents to ingest")
+    collection: Optional[str] = Field(None, description="Collection name")
+    chunk_size: int = Field(1000, description="Chunk size for splitting")
+    chunk_overlap: int = Field(200, description="Chunk overlap")
+
+
+class AsyncIngestResponse(BaseModel):
+    """Response model for async document ingestion"""
+    success: bool
+    task_id: str
+    message: str
+    queue_position: Optional[int] = None
+
+
+class TaskStatusResponse(BaseModel):
+    """Response model for task status"""
+    task_id: str
+    status: str
+    documents_processed: int
+    chunks_created: int
+    error_message: Optional[str]
+    created_at: str
+    started_at: Optional[str]
+    completed_at: Optional[str]
+
+
+class TaskListResponse(BaseModel):
+    """Response model for task list"""
+    tasks: List[Dict[str, Any]]
+    total_count: int
+    queue_size: int
+    active_tasks: int
+
+
+@router.post("/ingest/async", response_model=AsyncIngestResponse)
+async def ingest_documents_async(request: AsyncIngestRequest) -> AsyncIngestResponse:
+    """
+    Submit document ingestion for asynchronous background processing.
+
+    This endpoint returns immediately with a task ID, allowing large document
+    collections to be processed in the background without blocking the API.
+
+    Args:
+        request: Ingestion request with source path and parameters
+
+    Returns:
+        AsyncIngestResponse with task_id for tracking
+    """
+    try:
+        from app.services.document_processor import get_processor
+
+        # Validate path safety before submitting
+        validate_path_safety(request.source_path)
+
+        # Get processor and submit task
+        processor = get_processor()
+        task_id = await processor.submit_task(
+            source_path=request.source_path,
+            collection=request.collection,
+            chunk_size=request.chunk_size,
+            chunk_overlap=request.chunk_overlap
+        )
+
+        queue_size = await processor.get_queue_size()
+
+        return AsyncIngestResponse(
+            success=True,
+            task_id=task_id,
+            message="Document ingestion submitted for background processing",
+            queue_position=queue_size
+        )
+
+    except asyncio.QueueFull:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task queue is full. Please try again later."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit task: {str(e)}"
+        )
+
+
+@router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(task_id: str) -> TaskStatusResponse:
+    """
+    Get the status of an async document processing task.
+
+    Args:
+        task_id: Task ID to check
+
+    Returns:
+        TaskStatusResponse with current task status
+    """
+    try:
+        from app.services.document_processor import get_processor
+
+        processor = get_processor()
+        task_dict = await processor.get_task_status(task_id)
+
+        if not task_dict:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found"
+            )
+
+        return TaskStatusResponse(**task_dict)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get task status: {str(e)}"
+        )
+
+
+@router.get("/tasks", response_model=TaskListResponse)
+async def list_tasks(
+    status: Optional[str] = None,
+    limit: int = 50
+) -> TaskListResponse:
+    """
+    List all document processing tasks, optionally filtered by status.
+
+    Args:
+        status: Optional status filter (pending, processing, completed, failed)
+        limit: Maximum number of tasks to return
+
+    Returns:
+        TaskListResponse with list of tasks
+    """
+    try:
+        from app.services.document_processor import get_processor, TaskStatus
+
+        processor = get_processor()
+
+        # Parse status filter
+        status_filter = None
+        if status:
+            try:
+                status_filter = TaskStatus(status)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid status: {status}. Must be one of: pending, processing, completed, failed"
+                )
+
+        # Get tasks
+        tasks = await processor.list_tasks(status_filter=status_filter, limit=limit)
+
+        # Get stats
+        queue_size = await processor.get_queue_size()
+        active_tasks = await processor.get_active_tasks_count()
+
+        return TaskListResponse(
+            tasks=tasks,
+            total_count=len(tasks),
+            queue_size=queue_size,
+            active_tasks=active_tasks
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list tasks: {str(e)}"
+        )
+
+
+@router.delete("/tasks/{task_id}")
+async def cancel_task(task_id: str) -> Dict[str, Any]:
+    """
+    Cancel a pending or processing task.
+
+    Note: This is a placeholder for future implementation.
+    Currently, tasks cannot be cancelled once started.
+
+    Args:
+        task_id: Task ID to cancel
+
+    Returns:
+        Cancellation confirmation
+    """
+    # TODO: Implement task cancellation
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Task cancellation not yet implemented"
+    )
+
+
+# Export endpoints
+
+class ExportRequest(BaseModel):
+    """Request model for document export"""
+    content: str = Field(..., description="Document content to export")
+    filename: str = Field(..., description="Output filename (without extension)")
+    format: str = Field(..., description="Export format: pdf, docx, or txt")
+    title: Optional[str] = Field(None, description="Optional document title")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata")
+
+
+class ExportResponse(BaseModel):
+    """Response model for document export"""
+    success: bool
+    format: str
+    file_size: int
+    duration_ms: float
+    file_path: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class BatchExportRequest(BaseModel):
+    """Request model for batch document export"""
+    documents: List[Dict[str, Any]] = Field(..., description="List of documents to export")
+    format: str = Field(..., description="Export format: pdf, docx, or txt")
+
+
+class SupportedFormatsResponse(BaseModel):
+    """Response model for supported export formats"""
+    formats: List[str]
+    count: int
+
+
+@router.post("/export", response_model=ExportResponse)
+async def export_document(request: ExportRequest) -> ExportResponse:
+    """
+    Export a document to the specified format.
+
+    Supports PDF, DOCX, and TXT export with formatting and metadata preservation.
+
+    Args:
+        request: Export request with content, filename, format, and optional metadata
+
+    Returns:
+        ExportResponse with operation status and file details
+
+    Raises:
+        HTTPException: If export format is not supported or libraries not available
+    """
+    try:
+        from app.services.export import DocumentExporter, ExportFormat
+
+        # Validate format
+        try:
+            export_format = ExportFormat(request.format.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported export format: {request.format}. Supported: pdf, docx, txt"
+            )
+
+        # Create exporter
+        exporter = DocumentExporter(output_dir="./exports")
+
+        # Export document
+        result = exporter.export_document(
+            content=request.content,
+            filename=request.filename,
+            export_format=export_format,
+            metadata=request.metadata,
+            title=request.title
+        )
+
+        if not result.success:
+            # Distinguish validation errors from system errors
+            error_detail = result.error_message or "Unknown error"
+            error_lower = error_detail.lower()
+
+            if any(keyword in error_lower for keyword in
+                   ['invalid', 'unsupported', 'must be', 'required', 'content must be', 'filename must be']):
+                # Client error - bad input
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_detail
+                )
+            else:
+                # Server error - system failure
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_detail
+                )
+
+        return ExportResponse(
+            success=result.success,
+            format=result.format.value,
+            file_size=result.file_size,
+            duration_ms=result.duration_ms,
+            file_path=result.file_path
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Export failed: {str(e)}"
+        )
+
+
+@router.post("/export/batch")
+async def export_documents_batch(request: BatchExportRequest) -> Dict[str, Any]:
+    """
+    Export multiple documents in batch.
+
+    Args:
+        request: Batch export request with documents list and format
+
+    Returns:
+        Summary with results for each document
+
+    Raises:
+        HTTPException: If export format is not supported
+    """
+    try:
+        from app.services.export import DocumentExporter, ExportFormat
+
+        # Validate format
+        try:
+            export_format = ExportFormat(request.format.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported export format: {request.format}. Supported: pdf, docx, txt"
+            )
+
+        # Create exporter
+        exporter = DocumentExporter(output_dir="./exports")
+
+        # Export batch
+        results = exporter.export_batch(
+            documents=request.documents,
+            export_format=export_format
+        )
+
+        # Summarize results
+        success_count = sum(1 for r in results if r.success)
+        total_size = sum(r.file_size for r in results if r.success)
+
+        return {
+            "total_documents": len(results),
+            "successful": success_count,
+            "failed": len(results) - success_count,
+            "total_size_bytes": total_size,
+            "format": request.format,
+            "results": [
+                {
+                    "filename": r.file_path.split('/')[-1] if r.file_path else "unknown",
+                    "success": r.success,
+                    "error": r.error_message
+                }
+                for r in results
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Batch export failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch export failed: {str(e)}"
+        )
+
+
+@router.get("/export/{filename}", response_class=FileResponse)
+async def download_exported_file(filename: str) -> FileResponse:
+    """
+    Download a previously exported document.
+
+    Args:
+        filename: Name of the file to download
+
+    Returns:
+        FileResponse with the exported file
+
+    Raises:
+        HTTPException: If file not found
+    """
+    try:
+        file_path = Path("./exports") / filename
+
+        # Validate path safety
+        if ".." in filename or not file_path.resolve().is_relative_to(Path("./exports").resolve()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename"
+            )
+
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Exported file not found: {filename}"
+            )
+
+        return FileResponse(
+            path=str(file_path),
+            filename=filename,
+            media_type='application/octet-stream'
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Download failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Download failed: {str(e)}"
+        )
+
+
+@router.get("/export/formats", response_model=SupportedFormatsResponse)
+async def get_supported_formats() -> SupportedFormatsResponse:
+    """
+    Get list of supported export formats.
+
+    Returns:
+        SupportedFormatsResponse with available formats
+    """
+    try:
+        from app.services.export import DocumentExporter
+
+        exporter = DocumentExporter()
+        formats = exporter.get_supported_formats()
+
+        return SupportedFormatsResponse(
+            formats=formats,
+            count=len(formats)
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get supported formats: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get supported formats: {str(e)}"
+        )
+
+
+# Deduplication endpoints
+
+class DeduplicationStatsResponse(BaseModel):
+    """Response model for deduplication statistics"""
+    total_runs: int
+    total_documents_processed: int
+    total_duplicates_removed: int
+    average_processing_time_ms: float
+    last_run: Optional[Dict[str, Any]] = None
+
+
+@router.get("/deduplication/stats", response_model=DeduplicationStatsResponse)
+async def get_deduplication_stats() -> DeduplicationStatsResponse:
+    """
+    Get deduplication statistics from the current session.
+
+    Returns statistics about documents processed and duplicates removed.
+
+    Returns:
+        DeduplicationStatsResponse with deduplication statistics
+    """
+    try:
+        from app.services.deduplication import get_deduplicator
+
+        # Get a deduplicator instance to retrieve stats
+        deduplicator = get_deduplicator()
+        stats = deduplicator.get_statistics()
+
+        return DeduplicationStatsResponse(**stats)
+
+    except Exception as e:
+        logger.error(f"Failed to get deduplication stats: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get deduplication stats: {str(e)}"
+        )
+
+
+@router.post("/deduplication/clear-history")
+async def clear_deduplication_history() -> Dict[str, Any]:
+    """
+    Clear deduplication history.
+
+    Returns:
+        Status of history clearing
+    """
+    try:
+        from app.services.deduplication import get_deduplicator
+
+        deduplicator = get_deduplicator()
+        deduplicator.clear_history()
+
+        return {
+            "success": True,
+            "message": "Deduplication history cleared successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to clear deduplication history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear deduplication history: {str(e)}"
+        )
+
+
+@router.post("/deduplication/reset")
+async def reset_deduplication() -> Dict[str, Any]:
+    """
+    Reset the deduplication system completely.
+
+    Clears all history, hash caches, and creates a fresh deduplicator instance.
+    Useful for starting a new ingestion session.
+
+    Returns:
+        Status of reset operation
+    """
+    try:
+        from app.services.deduplication import reset_deduplicator
+
+        reset_deduplicator()
+
+        return {
+            "success": True,
+            "message": "Deduplication system reset successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to reset deduplication: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset deduplication: {str(e)}"
         )

@@ -21,7 +21,12 @@ class RetrievalResult:
     document: str
     score: float
     metadata: Dict[str, Any]
-    source: str
+    source: Optional[str] = None
+
+    def __post_init__(self):
+        """Auto-populate source from metadata if not provided"""
+        if self.source is None:
+            self.source = self.metadata.get('source', 'unknown')
 
 
 class HybridRetriever:

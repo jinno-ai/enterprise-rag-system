@@ -1,0 +1,60 @@
+{
+  "run_id": "2026-08-27T20:32:06Z",
+  "total_terms": 29,
+  "by_layer": {
+    "core": 7,
+    "domain": 15,
+    "aux": 7
+  },
+  "draft_ratio": 0.14,
+  "queue_pending": 0,
+  "claims_retained_lines": 14,
+  "decisions_md_lines": 17,
+  "gc_actions": {
+    "merged": 0,
+    "deleted": 0,
+    "deprecated": 0
+  },
+  "quality_metrics": {
+    "Q1_ontology_coverage": {
+      "value": "25/29 modules (86%)",
+      "criterion": ">=80%",
+      "verdict": "PASS"
+    },
+    "Q2_mapping_rate": {
+      "value": "29/29 (100%)",
+      "criterion": ">=90%",
+      "verdict": "PASS"
+    },
+    "Q3_invariant_extraction": {
+      "value": "21/42 test files (50%)",
+      "criterion": ">=50%",
+      "verdict": "PASS"
+    },
+    "Q4_draft_ratio": {
+      "value": "0.14",
+      "criterion": "<=0.30",
+      "verdict": "PASS"
+    },
+    "Q5_unmapped_claims": {
+      "value": "2/14 (14%)",
+      "criterion": "<=20%",
+      "verdict": "PASS"
+    },
+    "Q6_terms_max": {
+      "value": "29",
+      "criterion": "<=80",
+      "verdict": "PASS"
+    },
+    "Q7_charter_completeness": {
+      "value": "north_star + 4 milestones",
+      "criterion": "filled",
+      "verdict": "PASS"
+    },
+    "Q8_evidence_rate": {
+      "value": "29/29 (100%)",
+      "criterion": "100%",
+      "verdict": "PASS"
+    }
+  }
+}
