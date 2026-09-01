@@ -37,6 +37,9 @@ httpx==0.26.0
 # Batch processing (imported by tests/unit/test_batch_tasks.py)
 celery>=5.3.0
 
+# Security / Utils
+cryptography>=41.0.0
+
 # Test tooling
 pytest==7.4.3
 pytest-asyncio==0.23.2
