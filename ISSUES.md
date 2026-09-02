@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ドキュメント管理APIルーターの統合とモックエンドポイントの廃止
+
+**タイトル:** ドキュメント管理APIルーター (`app/api/routes/documents.py`) の `app/main.py` へのマウントとモック処理の置換
+
+**内容:**
+現在、`app/main.py` では `/api/v1/ingest` エンドポイントに対して `app/api/routes/ingest.py` のモックルーターがマウントされています。一方で、本格的なドキュメント取り込み・アップロード・一括処理・統計取得が実装されている `app/api/routes/documents.py` がマウントされておらず、本番用のドキュメント管理API機能が外部から利用できない状態となっています。また、`documents.py` 内で `db_type="faiss"` がハードコードされている箇所や依存オブジェクトの直感的な初期化を `config.py` や `app.state` 経由のリファクタリングによりDI（依存性注入）対応にする必要があります。
+
+**タスク:**
+- [ ] `app/main.py` における `ingest.router` のマウントを解除し、`documents.router` を `/api/v1` プレフィックスにマウントする
+- [ ] `app/api/routes/documents.py` でハードコードされている `faiss` などの設定を `settings.vector_db_type` 参照に変更する
+- [ ] `app/api/routes/documents.py` 内のベクトルDBやEmbeddingモダリティの取得処理をリファクタリングする
+- [ ] 統合されたドキュメント管理APIの単体・結合テストを作成・更新する
