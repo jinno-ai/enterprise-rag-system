@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語サポートの向上（形態素解析の導入）
+
+**タイトル:** 日本語形態素解析を用いたTextSplitterとHybridRetriever(BM25)の精度向上
+
+**内容:**
+現在、`HybridRetriever.build_bm25_index` におけるトークナイズ処理は `re.findall(r'\w+', doc.content.lower())` という簡易的な英単語区切りとなっており、日本語テキストに対するキーワード検索（BM25）およびテキスト分割（TextSplitter/Chunker）が適切に機能していません。日本語ドキュメントの検索精度とチャンキング精度を向上させるため、日本語形態素解析エンジン（JanomeまたはSudachiPy等）を導入する必要があります。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリ（JanomeまたはSudachiPy）の依存関係を追加する
+- [ ] `app/services/retrieval.py` の BM25 トークナイズ処理に形態素解析ロジックを組み込む
+- [ ] `app/services/document_loader.py` および `app/services/chunking.py` で日本語に適したセパレーターおよび形態素単位での分割に対応する
+- [ ] 日本語ドキュメントに対する検索・チャンキングの単体テストを追加する
