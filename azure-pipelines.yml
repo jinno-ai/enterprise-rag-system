@@ -1,17 +1,35 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
 - main
+- master
 
-pool: Default
+pool:
+  vmImage: 'ubuntu-latest'
+
+strategy:
+  matrix:
+    Python311:
+      python.version: '3.11'
+
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '$(python.version)'
+  displayName: 'Use Python $(python.version)'
 
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    python -m pip install --upgrade pip
+    pip install -r requirements-test.txt
+    pip install pytest-azurepipelines
+  displayName: 'Install dependencies'
+
+- script: |
+    pytest tests/unit -v --cov=app --cov-report=xml --cov-report=html
+  displayName: 'Run unit tests'
+  env:
+    OPENAI_API_KEY: 'no-key-provided'
+
+- task: PublishCodeCoverageResults@2
+  inputs:
+    summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+  displayName: 'Publish code coverage'
+  condition: succeededOrFailed()
