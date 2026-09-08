@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ドキュメント管理APIのエンドポイント統合とモック処理の置換
+
+**タイトル:** ドキュメント管理API (`app/api/routes/documents.py`) の統合とモック処理 (`app/api/routes/ingest.py`) の廃止・一本化
+
+**内容:**
+現在、`app/main.py` にて `app/api/routes/ingest.py` (モック実装のエンドポイント `/api/v1/ingest`) がマウントされており、実際のドキュメント読み込み・前処理・重複排除・ベクトル化・保存を行う `app/api/routes/documents.py` の機能とルーティングの重複や挙動の乖離が発生しています。
+
+Epic 2 (Story 2.1: 高度なドキュメント取り込み) に向けて、モック処理である `ingest.py` を廃止・統合し、`documents.py` の本格的なドキュメント取り込み・管理APIへ一本化する必要があります。また、`documents.py` 内でハードコードされている設定値やベクトルDB参照の標準化を行う必要があります。
+
+**タスク:**
+- [ ] `app/main.py` における `ingest.router` のマウントの整理および `/api/v1/documents` へのルーティング一本化
+- [ ] `app/api/routes/documents.py` 内の `FAISSVectorDB` 直接参照やハードコード（`./data/faiss_index.bin`）を `get_vector_db` / `settings` 経由にリファクタリング
+- [ ] 古いモックエンドポイント `app/api/routes/ingest.py` の削除または統合
+- [ ] 統合後のドキュメントインジェストAPI (`/api/v1/documents/ingest` や `/api/v1/documents/upload` 等) の機能テストおよび検証
