@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: RAGパイプラインにおけるCross-Encoder Rerankerの統合と初期化
+
+**タイトル:** `Reranker` サービスの `RAGPipeline` への統合およびアプリケーション起動時初期化
+
+**内容:**
+現在、`app/services/reranker.py` にCross-Encoderを用いた再ランク機能（`Reranker`）が実装されていますが、`app/main.py` のアプリケーション初期化処理（`lifespan`）で `Reranker` がインスタンス化されず、`RAGPipeline` に注入されていません。
+このため、`RAGPipeline.query` メソッドの `rerank=True` フラグが有効であっても実際には再ランクがスキップされ、ハイブリッド検索結果の上位ドキュメントのみが使用される状態になっています。
+Epic E-02（検索・RAG精度の高度化）の Story 2.3 を達成し検索精度（MRR / Faithfulness）を向上させるために、`Reranker` サービスを `main.py` で適切に初期化し `RAGPipeline` に統合する必要があります。
+
+**タスク:**
+- [ ] `app/main.py` の `lifespan` 内で `Reranker` インスタンスを初期化（環境変数 `RERANKER_MODEL` / 設定値を参照）する
+- [ ] 初期化した `Reranker` を `RAGPipeline` のコンストラクタ引数 `reranker` に渡す
+- [ ] `Reranker` 未インストール時や初期化失敗時にフォールバックして非再ランク動作を継続できるようエラーハンドリングを整備する
+- [ ] `Reranker` 統合に関するユニットテストおよび結合テストを追加・更新する
