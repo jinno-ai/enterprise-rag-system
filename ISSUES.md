@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 12: セキュリティ入力検証およびサニタイズ処理のAPIパイプライン統合
+
+**タイトル:** `SecurityValidator` による入力検証とサニタイズ処理の全APIエンドポイント統合
+
+**内容:**
+`app/core/security.py` に SQL インジェクション、XSS、パスコンバースト（Path Traversal）、コマンドインジェクションの検知および入力サニタイズ処理を行う `SecurityValidator` が実装されていますが、現時点で API リクエスト（`query`, `documents`, `ingest` 等）のパイプラインやミドルウェアに十分に統合されていません。悪意のある入力をリクエスト受信時に自動検知・ブロックし、入力文字をサニタイズすることで、エンタープライズレベルのセキュリティを確保する必要があります。
+
+**タスク:**
+- [ ] `ValidationMiddleware` または API ルート依存関係に `SecurityValidator` の各種検知ロジック（XSS、SQLi、Command Injection、Path Traversal）を組み込む
+- [ ] クエリ入力（`question`）やドキュメントパス/ファイル名の入力サニタイズおよびバリデーション処理を追加する
+- [ ] 不正な入力パターンが検出された場合に適切なエラーレスポンス（400 Bad Request / 422 Unprocessable Entity）を返す処理を実装する
+- [ ] セキュリティ入力検証の機能テストおよび回帰テストを作成・拡充する
