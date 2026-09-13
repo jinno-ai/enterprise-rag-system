@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 14: Cross-Encoder Reranker の RAGPipeline 統合と有効化設定の追加
+
+**タイトル:** `RAGPipeline` における Cross-Encoder Re-ranking 機能の統合およびトグル設定の追加
+
+**内容:**
+現在 `app/services/reranker.py` に `Reranker` サービス（Cross-Encoder ベースの再ランキング機能）が定義されていますが、`RAGPipeline` 検索フローおよびアプリケーション全体の検索処理に組み込まれていません。エピック E-02（Story 2.3）を満たし、検索回答精度の向上を図るために、`RAGPipeline` が `Reranker` オプションを受け入れ、検索時に結果を再ランク付けできるように統合を行う必要があります。
+
+**タスク:**
+- [ ] `app/core/config.py` に Re-ranking 用の設定項目（`reranker_enabled: bool`, `reranker_model: str` 等）を追加する
+- [ ] `RAGPipeline` クラスの初期化パラメータに `reranker` インスタンスを追加し、検索・回答生成フロー（`query` / `retrieve`）にて Re-ranking 処理を統合する
+- [ ] `app/main.py` の `lifespan` 内で `settings.reranker_enabled` が `True` の場合に `Reranker` を初期化して `RAGPipeline` に注入する
+- [ ] 統合テストおよび `RAGPipeline` + `Reranker` の単体テストを作成・拡充する
