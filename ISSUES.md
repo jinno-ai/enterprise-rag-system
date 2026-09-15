@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 15: 非同期ドキュメント処理におけるエラーハンドリング強化とプログレス追跡の追加
+
+**タイトル:** `BackgroundTaskProcessor` の堅牢化とリアルタイムプログレス追跡の統合
+
+**内容:**
+`app/services/document_processor.py` で提供されている `BackgroundTaskProcessor` は、大量のドキュメントを非同期にベクトル DB へインジェストする役割を担っています。しかし現状、処理全体の進捗状態（進捗率・処理数・失敗数）を段階的に取得するプログレス追跡機能や、個別のファイル処理でエラーが発生した際にタスク全体を失敗させず部分成功（Partial Success）として完了するフォールバック機能が不足しています。
+
+**タスク:**
+- [ ] `ProcessingTask` に `progress_percentage`, `total_documents`, `failed_documents` 等のステータス追跡フィールドを追加する
+- [ ] `BackgroundTaskProcessor._process_task` において単一ファイル処理のエラーハンドリングを強化し、一部ファイルエラー時にも全体の処理を継続できるように修正する
+- [ ] タスクの進行状況をリアルタイムで取得・更新できるプログレス更新機能を実装する
+- [ ] `tests/unit/test_document_processor.py` に新規機能のテストケースを追加・更新する
