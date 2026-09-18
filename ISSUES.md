@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 13: HybridRetriever における RRF パラメータの可変設定と BM25 チューニング対応
+
+**タイトル:** `HybridRetriever` の Reciprocal Rank Fusion (RRF) 定数設定および BM25 パラメータのカスタマイズ機能の追加
+
+**内容:**
+`app/services/retrieval.py` の `HybridRetriever.hybrid_search` において、Reciprocal Rank Fusion (RRF) スコア計算の定数 `60` (`rrf_score = 1.0 / (rank + 60)`) がハードコードされています。また、`build_bm25_index` において BM25 のチューニングパラメータ（$k_1, b$ など）を調整する仕組みが存在しません。検索精度（MRR@10 > 0.75 達成）や特定のドキュメントセットに応じた最適化を行うために、これらのパラメータを設定・チューニング可能にする必要があります。
+
+**タスク:**
+- [ ] `HybridRetriever` の初期化引数に RRF 定数 `rrf_k`（デフォルト: 60）を追加する
+- [ ] `hybrid_search` 内の RRF スコア計算処理でハードコードされた定数を `self.rrf_k` に置換する
+- [ ] `build_bm25_index` メソッドで BM25 のパラメータ（`k1`, `b` 等）を外部から指定可能にする
+- [ ] パラメータ変更時の挙動検証用単体テストを追加する
