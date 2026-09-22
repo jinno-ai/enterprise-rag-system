@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析によるBM25検索およびチャンキング精度の向上
+
+**タイトル:** 日本語形態素解析の導入によるBM25検索とテキスト分割の最適化
+
+**内容:**
+現在、`HybridRetriever` の BM25 インデックス生成（`app/services/retrieval.py`）では、単純な正規表現 (`re.findall(r'\w+', text)`) による単語分割が使用されており、単語境界にスペースを含まない日本語テキストのトークナイズが正しく行われません。また、`TextSplitter` / `DocumentChunker`（`app/services/chunking.py`）においても、日本語の文末記号（`。`など）に対応したセパレータ設定や形態素解析に基づく適切な文境界分割が必要です。
+
+EPIC_PLANNING.md の Story 2.2（ハイブリッド検索エンジンの実装）に基づき、Janome や SudachiPy などの日本語形態素解析ライブラリを導入してトークナイズ処理およびチャンキング処理を日本語用に最適化する必要があります。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリ (Janome または SudachiPy) を依存関係に追加・設定する
+- [ ] `HybridRetriever.build_bm25_index` および `keyword_search` で日本語形態素解析トークナイザーを適用可能にする
+- [ ] `TextSplitter` / `DocumentChunker` で日本語文末記号（`。`, `！`, `？`など）を意識した分割ロジックを追加する
+- [ ] 日本語テキストに対するハイブリッド検索およびチャンキングの単体テストを作成する
