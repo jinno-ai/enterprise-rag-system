@@ -23,8 +23,11 @@ openai==1.10.0
 
 # Retrieval / vector search
 rank-bm25==0.2.2
-faiss-cpu==1.7.4
+faiss-cpu>=1.8.0
 numpy>=1.24,<2
+
+# Encryption
+cryptography
 
 # Caching / rate limiting / metrics
 redis==5.0.1
