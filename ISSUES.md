@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: FAISSVectorDBにおけるベクトル削除機能の実装
+
+**タイトル:** `FAISSVectorDB.delete` メソッドの削除ロジック実装とコレクションごとのベクトル削除対応
+
+**内容:**
+現在、`FAISSVectorDB.delete` (`app/core/vectordb.py`) はスタブ関数となっており、警告ログを出力するだけで実際のベクトル削除およびメタデータストア (`metadata_store`, `id_to_idx`, `idx_to_id`) からの削除処理を行っていません。そのため、ドキュメント管理API等から削除要求が送信されてもベクトルDB上にデータが残り続け、検索結果に削除済みドキュメントが含まれる原因となっています。
+
+FAISSではインデックスの直接削除がサポートされていないため、削除対象IDを除外してインデックスを再構築するか、FAISSの `remove_ids` 機能を活用し、コレクションごとのデータ整合性を保ちながら削除を完了させる実装が必要です。
+
+**タスク:**
+- [ ] `FAISSVectorDB.delete` メソッドに指定IDのベクトルおよびメタデータ削除処理を実装する
+- [ ] 削除後のメタデータストア (`metadata_store`), `id_to_idx`, `idx_to_id` マッピングの再構築・更新を行う
+- [ ] コレクション指定 (`collection` パラメータ) に対応した削除処理をサポートする
+- [ ] ドキュメント削除処理の単体テスト (`tests/unit/test_vectordb.py`) を追加する
