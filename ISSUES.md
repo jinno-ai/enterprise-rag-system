@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 16: インジェスチョンパイプラインにおける重複ドキュメント検知・排除 (`DocumentDeduplicator`) の統合
+
+**タイトル:** インジェスチョンパイプラインにおける重複ドキュメント検知・排除機能の統合
+
+**内容:**
+現在 `app/services/deduplication.py` には、SHA-256を用いた完全一致検知 (`ExactHashDeduplication`) およびJaccard類似度等を用いた近傍重複検知 (`SimilarityDeduplication`) を行う `DocumentDeduplicator` が実装されています。しかし、この機能が `DocumentLoader` や `BackgroundTaskProcessor` などのドキュメントインジェスチョンフローに統合されていません。
+
+そのため、同一または極めて類似したドキュメントが繰り返しアップロードされた場合に、ベクトルデータベースのインデックス肥大化や検索結果における冗長化・重複回答が発生する問題があります。インジェスチョン処理内で自動的に重複を検知・除外または警告する仕組みを導入する必要があります。
+
+**タスク:**
+- [ ] `DocumentLoader` または `BackgroundTaskProcessor` / `DocumentProcessor` への `DocumentDeduplicator` 組み込み
+- [ ] `config.py` に重複排除設定（有効/無効フラグ、戦略 `exact`/`similarity`、類似度閾値）の追加
+- [ ] インジェスチョンAPIおよびバックグラウンドタスクの処理結果レスポンスに重複削除件数/統計情報を追加
+- [ ] `DocumentDeduplicator` の統合テストおよびユニットテストの拡張
