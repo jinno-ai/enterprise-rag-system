@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入によるテキスト分割と検索精度の向上
+
+**タイトル:** 日本語テキストの形態素解析（Janome/Sudachi等）によるChunkingおよびBM25検索の精度改善
+
+**内容:**
+現在、`app/services/document_loader.py`（および `app/services/chunking.py`）の `TextSplitter` は単純な文字数・改行ベースの区切り文字を使用しており、`app/services/retrieval.py` の `HybridRetriever` における BM25 インデックス構築では `re.findall(r'\w+', doc.content.lower())` による簡易トークナイズを行っています。
+日本語テキストでは単語間にスペースが存在しないため、文字単位の分割や簡易正規表現では単語の途中でチャンクが切れる問題や、BM25におけるキーワード一致精度の低下（単語単位での転置インデックス作成が困難）が発生します。
+
+**タスク:**
+- [ ] 日本語形態素解析モジュール（`janome` や `sudachipy` 等）の導入またはオプショナルな統合を行う
+- [ ] `TextSplitter` / `DocumentChunker` で形態素解析を活用した文境界・単語境界でのテキスト分割に対応する
+- [ ] `HybridRetriever.build_bm25_index` および `keyword_search` において、形態素解析トークナイザーを使用した単語分割を行う
+- [ ] 日本語ドキュメントおよびクエリに対するユニットテストを追加する
