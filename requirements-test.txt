@@ -21,9 +21,12 @@ pydantic-settings==2.1.0
 # LLM client (mocked in tests, but imported at module load)
 openai==1.10.0
 
+# Security / encryption
+cryptography
+
 # Retrieval / vector search
 rank-bm25==0.2.2
-faiss-cpu==1.7.4
+faiss-cpu>=1.8.0
 numpy>=1.24,<2
 
 # Caching / rate limiting / metrics
