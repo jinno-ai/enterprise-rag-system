@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Cross-Encoder Reranker の RAGPipeline 統合と構成の自動化
+
+**タイトル:** Cross-Encoder Reranker の RAGPipeline への統合と設定フラグの追加
+
+**内容:**
+現在、`app/services/reranker.py` に Cross-Encoder ベースの Re-ranking サービス (`Reranker`) が実装されていますが、`app/main.py` のアプリケーション初期化 (lifespan) 処理でインスタンス化されておらず、`RAGPipeline` に渡されていません。
+検索精度の向上 (EPIC_PLANNING.md Story 2.3) を達成するために、設定ファイル (`app/core/config.py`) に Re-ranking の有効化フラグを追加し、アプリケーション起動時に `Reranker` を初期化して `RAGPipeline` へ注入するように修正する必要があります。
+
+**タスク:**
+- [ ] `app/core/config.py` に `enable_reranker: bool` 設定フィールドを追加する
+- [ ] `app/main.py` の `lifespan` 内で `settings.enable_reranker` の設定に応じて `Reranker` を初期化し、`RAGPipeline` に注入する
+- [ ] `RAGPipeline` で Re-ranking が有効化されている場合の動作およびフォールバック処理の単体・結合テストを作成する
