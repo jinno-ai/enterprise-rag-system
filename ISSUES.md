@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析によるBM25キーワード検索精度向上とVectorDB検索インターフェースの整合化
+
+**タイトル:** 日本語形態素解析 (Janome/Sudachi) の導入と VectorDB 検索引数の整合化
+
+**内容:**
+現在 `app/services/retrieval.py` 内の `HybridRetriever.build_bm25_index` および `keyword_search` では、簡易的な正規表現 (`re.findall(r'\w+', ...)`) による単語分割が使用されています。日本語テキストの場合、単語境界がスペースで区切られないため、正確なトークナイズが行われず、BM25キーワード検索の精度が著しく低下します。
+また、`VectorDB` 抽象クラスおよび `PineconeVectorDB` の `search` メソッドと `HybridRetriever.semantic_search` 間で `collection` パラメータのシグネチャに不整合が存在し、Pinecone利用時にエラーが発生する潜在的な不具合があります。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリ（Janome または SudachiPy）を用いたトークナイザーモジュールを導入する
+- [ ] `HybridRetriever.build_bm25_index` および `keyword_search` に形態素解析トークナイザーを適用し、日本語キーワード検索の精度を向上させる
+- [ ] `VectorDB` 基底クラスおよび `PineconeVectorDB` の `search` メソッドに `collection` 引数を追加・調整し、インターフェースの不整合を解消する
+- [ ] 形態素解析トークナイザーおよび修正後のハイブリッド検索機能に対する単体テストを追加する
