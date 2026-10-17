@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: FAISS実装の完全化とドキュメント管理APIの統合
+
+**タイトル:** FAISS実装の完全化とドキュメント管理APIの統合
+
+**内容:**
+現在、`FAISSVectorDB` の `delete` メソッドがプレースホルダーであり、`search` メソッドでのメタデータフィルタリングも実装されていません。また、`app/main.py` ではモック実装の `ingest.py` が使用されており、機能豊富な `documents.py` が活用されていません。プロダクション環境での運用を想定し、これらを解決する必要があります。
+
+**タスク:**
+- [ ] `FAISSVectorDB.delete` を実装する（ID指定による削除とインデックス再構築）
+- [ ] `FAISSVectorDB.search` で `filter_dict` を使用したメタデータフィルタリング（線形スキャン等）を実装する
+- [ ] `app/main.py` のエンドポイントを `ingest.router` から `documents.router` に移行し、モックを排除する
+- [ ] `HybridRetriever` または `ContextCompressor` に、既存の `Reranker` サービス (`app/services/reranker.py`) を統合して精度を向上させる
