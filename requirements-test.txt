@@ -1,43 +1,44 @@
-# Minimal dependency set for running the unit test suite.
-#
-# The full requirements.txt pulls heavy ML / external libraries (torch via
-# sentence-transformers, chromadb, arize-phoenix, unstructured, ...) that are
-# slow and fragile to install in CI. The unit tests mock those libraries, so CI
-# only needs this lightweight, verified set. Keep versions aligned with
-# requirements.txt.
-#
-# Verified: 278 unit tests pass on Python 3.10 with exactly these packages.
-
-# Web framework
-fastapi==0.109.0
-uvicorn==0.27.0
-python-multipart==0.0.6
-
-# Validation / config
-pydantic==2.5.0
-pydantic[email]==2.5.0
+# Core dependencies
+python-dotenv==1.0.0
+pydantic==2.10.0
 pydantic-settings==2.1.0
 
-# LLM client (mocked in tests, but imported at module load)
+# LLM & AI Frameworks
+langchain==0.1.20
+langchain-community==0.0.38
+langchain-openai==0.1.1
+langchain-anthropic==0.1.1
+langchain-google-genai==0.0.6
 openai==1.10.0
+anthropic==0.25.8
+cohere==4.40
 
-# Retrieval / vector search
+# Vector Databases
+faiss-cpu==1.8.0
+numpy==1.26.4
+protobuf==4.25.9
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Search & Retrieval
 rank-bm25==0.2.2
-faiss-cpu==1.7.4
-numpy>=1.24,<2
 
-# Caching / rate limiting / metrics
+# Caching & Rate Limiting
 redis==5.0.1
 slowapi>=0.1.9
 prometheus-client==0.19.0
 prometheus-fastapi-instrumentator==6.0.0
 tenacity==8.2.3
-httpx==0.26.0
+httpx==0.27.0
 
-# Batch processing (imported by tests/unit/test_batch_tasks.py)
+# Batch processing
 celery>=5.3.0
 
 # Test tooling
 pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0
+pytest-mock==3.14.0
