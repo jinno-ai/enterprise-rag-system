@@ -82,8 +82,31 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タイトル:** グローバル変数の廃止とDependency Injectionの導入
 
 **内容:**
-`app/main.py` で `_rag_pipeline` というグローバル変数が使用されています。これはテスト時のモック化を困難にし、アプリケーションのステート管理を複雑にします。FastAPIのDependency Injectionシステムを活用すべきです。
+`app/main.py` で `_rag_pipeline` というグローバル変数が使用されています。これはテスト時のモック化を困難にし、アプリケーションのステート管理を複雑にします。FastAPI of Dependency Injectionシステムを活用すべきです。
 
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ベクトルデータベースの移植性とインターフェース一貫性の向上
+
+**タイトル:** VectorDBインターフェース仕様の乖離とハードコードされた依存関係の解消
+
+**内容:**
+現在、アプリケーション内で使用しているベクトルデータベースの抽象基盤（`VectorDB` 抽象クラス）およびその実装クラス群、そしてドキュメント管理API（`app/api/routes/documents.py`）の間で、設計上の仕様の乖離とハードコーディングによる技術的負債が存在します。これにより、ベクトルデータベースの容易な差し替え（ポータビリティ）という当初の設計方針が妨げられています。
+
+具体的には、以下の課題が存在します。
+1. **メソッドシグネチャの不一致:**
+   - `FAISSVectorDB.search` メソッドは複数コレクション（マルチテナントなど）のサポートとして `collection` パラメータ（デフォルト `"default"`）を受け取りますが、抽象クラス `VectorDB` および `PineconeVectorDB.search` のシグネチャには `collection` パラメータが定義されていません。
+   - `HybridRetriever.semantic_search` 内で `self.vector_db.search` を呼び出す際、`collection` パラメータを渡しているため、もし設定により `PineconeVectorDB` が読み込まれた場合、`TypeError`（想定外のキーワード引数）が発生しシステムがクラッシュします。
+2. **APIルートでの特定のデータベース実装へのハードコード依存:**
+   - ドキュメント管理API (`app/api/routes/documents.py`) 内の `/ingest`, `/upload`, `/stats` エンドポイントにおいて、ベクトルDBインスタンスを取得する際に `get_vector_db(db_type="faiss", ...)` とDBタイプが `"faiss"` にハードコードされています。
+   - 本来は環境変数や `settings.vector_db_type` などの構成設定から動的にDBタイプを判定して、適切な実装インスタンスを取得すべきです。
+
+**タスク:**
+- [ ] 抽象クラス `VectorDB` および `PineconeVectorDB` の `search`, `upsert`, `delete` などのメソッドに、`collection: str = "default"` を追加し、シグネチャの完全な一致と一貫性を確保する。
+- [ ] `config.py` または `Settings` クラスにベクトルデータベースの種別を指定する `vector_db_type: str = Field("faiss", env="VECTOR_DB_TYPE")` 設定を追加する。
+- [ ] `app/api/routes/documents.py` 内の `get_vector_db(db_type="faiss")` の呼び出し箇所を、`settings.vector_db_type` を参照して動的に適用するように修正する。
+- [ ] `PineconeVectorDB` や、将来実装予定の他のデータベース用にコレクション（名前空間）のハンドリングを実装またはプレースホルダー化し、検索エンジンの共通利用における安全な統合を検証するテストコードを実装する。
