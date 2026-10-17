@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 高度なドキュメント取り込みパイプラインの実装 (Epic 2 / Story 2.1)
+
+**タイトル:** `Unstructured.io` によるマルチフォーマットドキュメント取り込みとセマンティックチャンキングの統合
+
+**内容:**
+`EPIC_PLANNING.md` の Epic 2 (Advanced RAG Core) / Story 2.1 に基づき、PDF, DOCX, PPTX 等の非構造化ドキュメントから高精度にテキストおよび表（Table）構造を抽出し、文脈を考慮したセマンティックチャンキングをインジェストパイプラインに統合します。
+
+**タスク:**
+- [ ] `Unstructured.io` 関連ライブラリを用いたマルチフォーマット（PDF, DOCX, PPTX）抽出機能の統合
+- [ ] ドキュメント内の表（Table）要素の構造化抽出（Markdown/HTML保持）とメタデータ付与
+- [ ] 文脈の切れ目を維持するセマンティックチャンキング（`SemanticChunker` または再帰的分割ロジック）の実装
+- [ ] `DocumentLoader` およびインジェストAPI (`app/api/routes/documents.py`) への組み込みとユニットテストの作成
