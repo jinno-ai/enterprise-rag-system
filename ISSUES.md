@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 8: VectorDB 抽象クラスおよび PineconeVectorDB における collection 引数の不整合解消
+
+**タイトル:** `VectorDB` インターフェースおよび `PineconeVectorDB.search` への `collection` 引数の追加
+
+**内容:**
+`app/core/vectordb.py` 内の `VectorDB` 抽象基底クラスおよび `PineconeVectorDB` 実装クラスの `search` メソッドには `collection` 引数が定義されていません。
+一方で、`FAISSVectorDB.search` や `HybridRetriever.search` など呼び出し側では `collection` パラメータが渡される設計になっています。
+このため、Pinecone をバックエンドとして利用した際に `TypeError: search() got an unexpected keyword argument 'collection'` が発生し、正常に検索が実行できない問題が生じます。
+
+**タスク:**
+- [ ] `VectorDB` 抽象基底クラスの `search` メソッドのシグネチャに `collection: str = "default"` を追加する
+- [ ] `PineconeVectorDB.search` メソッドのシグネチャに `collection: str = "default"` を追加し、Pinecone のネームスペース/コレクション指定に対応させる
+- [ ] 関連する単体テスト (`tests/unit/test_vectordb.py` 等) に PineconeVectorDB の `collection` パラメータ動作の検証テストを追加する
