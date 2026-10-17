@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上とドキュメント管理機能の統合
+
+**タイトル:** 検索精度の向上とドキュメント管理機能の完全統合
+
+**内容:**
+現在、検索精度を向上させるための `Reranker` サービスが実装されていますが、`RAGPipeline` や `HybridRetriever` に統合されていません。また、日本語のトークナイズ処理や `FAISSVectorDB` のメタデータフィルタリングが未実装であり、ドキュメント管理 API も一部がモックのままです。これらを改善し、システム全体の完成度を高めます。
+
+**タスク:**
+- [ ] `Reranker` サービスを `HybridRetriever` または `RAGPipeline` の検索フローに統合する
+- [ ] `FAISSVectorDB` において、`filter_dict` を使用したメタデータフィルタリングを実装する
+- [ ] `TextSplitter` および `HybridRetriever.build_bm25_index` に日本語形態素解析（Janome等）を導入する
+- [ ] `app/main.py` の `ingest` ルーター（モック）を `documents` ルーター（実体）に置き換える
+- [ ] `app/api/routes/documents.py` で `VectorDB` インタフェースを介した DB 操作を行うよう修正し、DB タイプのハードコードを排除する
