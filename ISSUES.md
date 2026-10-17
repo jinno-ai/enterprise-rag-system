@@ -87,3 +87,23 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**タイトル:** 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**内容:**
+現状のシステムでは日本語の分かち書きや高度な再ランク付けが未実装であり、また一部のAPIエンドポイントがモックのままになっています。エンタープライズ利用に耐えうる精度と機能を提供するため、以下の改善が必要です。
+
+- **日本語対応:** `Janome` や `Sudachi` を導入し、日本語テキストの適切なチャンク分割と BM25 トークナイズを実現する。
+- **再ランク付け:** `app/services/reranker.py` に実装済みの Cross-Encoder を検索パイプラインに統合する。
+- **API統合:** `app/main.py` でマウントされているモックの `ingest.router` を、機能実装済みの `app/api/routes/documents.py` に置き換える。
+- **VectorDB機能拡充:** `FAISSVectorDB` の `delete` メソッドの実装と、`search` メソッドにおける `filter_dict` (メタデータフィルタリング) への対応。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリを導入し、`TextSplitter` と `HybridRetriever` を更新する
+- [ ] `RAGPipeline` または `HybridRetriever` に `Reranker` を組み込む
+- [ ] `app/main.py` のルーター定義を更新し、モックエンドポイントを廃止する
+- [ ] `app/core/vectordb.py` の FAISS 実装を強化する
