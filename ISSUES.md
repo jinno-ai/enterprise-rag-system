@@ -79,7 +79,7 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 
 ## Issue 5: 依存性の注入 (Dependency Injection) の適正化
 
-**タイトル:** グローバル変数の廃止とDependency Injectionの導入
+**タイトル:** グローバル変数の廃止とDependency Injection of the RAGPipeline の導入
 
 **内容:**
 `app/main.py` で `_rag_pipeline` というグローバル変数が使用されています。これはテスト時のモック化を困難にし、アプリケーションのステート管理を複雑にします。FastAPIのDependency Injectionシステムを活用すべきです。
@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 高度なドキュメント管理API (`app/api/routes/documents.py`) のマウントとモック統合
+
+**タイトル:** 実践的なドキュメント管理APIのエンドポイント統合とモックルートの置換
+
+**内容:**
+現在、`app/main.py` 内でドキュメント登録用として `/api/v1/ingest` というモックルート (`app/api/routes/ingest.py`) がマウントされています。しかし、実際には一括処理 (Celery)、ファイルアップロード、PDF・Markdown等の読み込みに対応した高機能なドキュメント管理API (`app/api/routes/documents.py`) が既に実装されているにも関わらず、利用可能な状態になっていません。
+
+システムの整合性と高機能な管理画面 (Streamlit UI 等) との連携を保証するため、モックルートを廃止し、正式な `documents.py` を `/api/v1` 配下にマウントして利用できるようにする必要があります。
+
+**タスク:**
+- [ ] `app/main.py` における `app.include_router(ingest.router, prefix="/api/v1", tags=["Ingest"])` を廃止、または `documents.router` への置換・統合を行う
+- [ ] `app/api/routes/documents.py` のルーターを `app.main:app` にマウントする
+- [ ] テストスイート (`tests/unit` / `tests/integration`) にドキュメント管理APIの統合テストを追加・更新する
