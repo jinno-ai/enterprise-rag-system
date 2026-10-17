@@ -87,3 +87,22 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 本格的なドキュメント管理APIの統合、FAISSVectorDBの削除処理実装、および設定変数への適応
+
+**タイトル:** 動作可能なドキュメント管理APIの統合と、FAISSでのドキュメント削除対応、およびDB種類のポータビリティ強化
+
+**内容:**
+現在、`app/main.py` ではモック実装の `ingest.router` (エンドポイント `/api/v1/ingest`) がマウントされており、実際に各種ドキュメント（PDF, MD, TXT）のインジェスト、個別アップロード、バッチ処理、統計取得をこなすリッチな機能を提供する `app/api/routes/documents.py` (エンドポイント `/documents/*`) がマウントされていません。
+
+また、`app/api/routes/documents.py` は、ベクトルデータベースを取得する際に `"faiss"` を直書き（ハードコード）しており、環境設定 (`settings.vector_db_type`) が考慮されないため、将来的に Pinecone 等の他 DB に移行する際のポータビリティが損なわれています。さらに、ローカル開発などで使われる `FAISSVectorDB` の `delete` メソッドは現在プレースホルダー（警告ログを出力するのみ）であり、実質的なドキュメント（チャンク）削除が不可能です。
+
+本課題では、これらの問題を解消し、エンタープライズ品質のドキュメントライフサイクル管理（登録・統計・削除）を完全に実機能として統合します。
+
+**タスク:**
+- [ ] `app/main.py` にて、モックの `ingest.router` に代わり、本物のドキュメント管理APIである `app/api/routes/documents.py` の `router` をマウントする（マウントパスは整合性を保つよう適切に設定する）。
+- [ ] `app/api/routes/documents.py` 内でベクトルDBインスタンスを取得する際、`db_type="faiss"` の直書きを廃止し、設定ファイルから取得する `settings.vector_db_type` を使用するように修正する。
+- [ ] `app/core/vectordb.py` 内の `FAISSVectorDB.delete` メソッドを実装し、指定されたIDリストに合致するドキュメント（およびそのベクトルデータやメタデータ）を `indices` や `metadata_stores` 等から正しく削除（または再構成して削除）できるようにする。
+- [ ] 削除処理の動作を検証するための単体テストを `tests/unit/` 以下に追加する。
