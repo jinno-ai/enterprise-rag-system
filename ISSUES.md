@@ -87,3 +87,25 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**タイトル:** 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**内容:**
+E-01で構築した技術基盤の上に、実際の検索精度と運用性を高めるための改善を行います。現状、日本語のトークナイズが不十分であり、一部の機能が未実装またはモックのままとなっています。
+
+**タスク:**
+- [ ] **日本語対応の強化:**
+  - `app/services/document_loader.py` の `TextSplitter` に形態素解析（Janome等）を導入。
+  - `app/services/retrieval.py` の BM25 インデックス作成時のトークナイズを日本語対応。
+- [ ] **VectorDB 機能補完:**
+  - `FAISSVectorDB.delete` メソッドの実装（ドキュメント削除対応）。
+  - `FAISSVectorDB.search` で `filter_dict` によるメタデータフィルタリングを実装。
+- [ ] **API 統合の完成:**
+  - `app/main.py` でマウントしているモックの `ingest.router` を `app/api/routes/documents.py` に置換。
+  - `app/api/routes/documents.py` 内の `get_vector_db` 呼び出しで、ハードコードされた "faiss" ではなく `settings.vector_db_type` を参照するよう修正。
+- [ ] **Reranker の最適化:**
+  - `ContextCompressor` 内での `Reranker` サービスの正式な統合。
