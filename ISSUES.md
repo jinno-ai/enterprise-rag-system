@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語検索精度の向上とドキュメント管理APIの統合
+
+**タイトル:** 日本語検索精度の向上とドキュメント管理APIの統合
+
+**内容:**
+現在、BM25検索のトークナイズが簡易的な正規表現のみで行われており、日本語の検索精度が低くなっています。
+また、APIルートにおいて機能的な `documents.router` が実装されているにもかかわらず、`app/main.py` ではモックの `ingest.router` がマウントされています。
+さらに、`FAISSVectorDB` の `delete` メソッドが未実装であり、ドキュメントの削除ができない状態です。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` に Janome または Sudachi を導入し、日本語の形態素解析によるトークナイズを実装する
+- [ ] `app/main.py` の `ingest.router` を `app/api/routes/documents.py` の `router` に置き換え、実機能を提供可能にする
+- [ ] `FAISSVectorDB.delete` メソッドを実装し、インデックスの再構築を含めたドキュメントの削除機能を実装する
