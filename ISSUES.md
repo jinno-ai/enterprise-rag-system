@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**タイトル:** 日本語検索精度の改善とドキュメント管理APIの正式統合
+
+**内容:**
+現在の実装では、日本語ドキュメントのチャンク分割やキーワード検索（BM25）において単純な正規表現によるトークン化が行われており、日本語の構造を正しく捉えられていません。また、検索結果の再ランク付け（Reranker）が実装されているものの統合されておらず、一部のベクトルDB操作が未実装のままです。さらに、APIエンドポイントの一部がモックのままとなっています。
+
+**タスク:**
+- [ ] **日本語形態素解析の導入:** `Janome` または `Sudachi` を導入し、`TextSplitter` と `HybridRetriever.build_bm25_index` で適切なわかち書きを行うように修正する。
+- [ ] **Rerankerの統合:** `HybridRetriever` または `RAGPipeline` に `Reranker` クラスを統合し、検索結果の精度を向上させる。
+- [ ] **FAISS実装の強化:** `FAISSVectorDB.delete` メソッドを実装し、`FAISSVectorDB.search` で `filter_dict` を評価するようにロジックを修正する。
+- [ ] **APIの正式統合:** `app/main.py` で使用されているモックの `ingest.router` を廃止し、`app/api/routes/documents.py` を正式なエンドポイントとしてマウントする。
+- [ ] **DIの改善:** `app/api/routes/documents.py` でハードコードされている `db_type="faiss"` を `settings` から取得するように修正する。
