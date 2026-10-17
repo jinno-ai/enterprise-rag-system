@@ -87,3 +87,26 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ドキュメント管理APIの統合とFAISSVectorDBの削除機能の実装
+
+**タイトル:** ドキュメント管理APIの統合、データベース移植性の向上、およびFAISSVectorDBにおける削除機能の実装
+
+**内容:**
+現在、アプリケーション（`app/main.py`）では、モックデータのみを返す最小限の `ingest.router` が `/api/v1` 配下にマウントされており、本番運用品質の `documents.router` (`app/api/routes/documents.py`) がマウントされずに放置されています。
+また、`documents.router` では `get_vector_db(db_type="faiss")` のようにデータベースの種類が `"faiss"` にハードコードされており、環境変数による `settings.vector_db_type` の切り替え（Pinecone等）が反映されず、データベースの移植性が制限されています。
+さらに、`FAISSVectorDB` の `delete` メソッドは現在プレースホルダー（警告ログを出力するのみ）であり、インジェストしたドキュメントを物理削除することができません。
+
+これらの課題を解決し、ドキュメント管理を本番運用品質に引き上げるために、以下の実装を提案します。
+
+- **FAISSVectorDB.delete の実装:** 指定された ID に該当するベクトルおよびメタデータを特定し、それらを除外してインデックスを再構築（および永続化ファイルの更新）するロジックを実装します。
+- **ドキュメント管理APIにおけるDBタイプの動的取得:** `documents.py` でハードコードされているデータベースの種類 (`"faiss"`) を `settings.vector_db_type` を参照して動的に切り替えるように修正します。
+- **本番用ドキュメントAPIルーターの統合:** 既存のモックルーターとの互換性を保ちつつ、または本番品質ルーターへ完全に移行し、`/api/v1` 以下に統合します。
+
+**タスク:**
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.delete` メソッドを実装し、指定したIDのドキュメント（ベクトルおよびメタデータ）を物理的に削除・インデックス再構築できるようにする
+- [ ] `tests/unit/test_vectordb_collections.py` などのテストスイートに、`delete` メソッドを検証する単体テストを追加する
+- [ ] `app/api/routes/documents.py` で `db_type="faiss"` とハードコードされている箇所を `settings.vector_db_type` を用いた動的なDI（Dependency Injection）にリファクタリングする
+- [ ] `app/main.py` において本番仕様の `documents.router` を適切にマウント/統合し、モック依存を排除する
