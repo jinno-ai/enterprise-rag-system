@@ -87,3 +87,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 統合的なドキュメント管理APIの有効化と日本語検索精度の向上
+
+**タイトル:** 実装済みドキュメントAPIへの移行と日本語形態素解析の導入
+
+**内容:**
+現在、APIのインジェスト機能として `app/api/routes/ingest.py` (モック実装) が使用されていますが、より詳細な機能を持つ `app/api/routes/documents.py` が既に存在します。また、日本語ドキュメントを扱う際、単純な文字列分割では検索精度が低下するため、形態素解析を導入したチャンク分割が必要です。
+
+**タスク:**
+- [ ] `app/main.py` で `ingest.router` の代わりに `documents.router` をマウントする
+- [ ] `app/services/document_loader.py` の `TextSplitter` に日本語形態素解析（Janome等）をオプションとして導入する
+- [ ] `app/services/rag_pipeline.py` における `reranker` の統合状態を確認し、必要に応じて設定を最適化する
