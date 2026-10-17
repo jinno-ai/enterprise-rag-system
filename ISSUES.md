@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: VectorDB 抽象インターフェースと PineconeVectorDB における collection パラメータの不整合解消
+
+**タイトル:** `VectorDB` 抽象基底クラスおよび各実装における `collection` パラメータの統一とシグネチャ不整合の解消
+
+**内容:**
+現在、`app/services/retrieval.py` (`HybridRetriever`) や `app/services/rag_pipeline.py` は `vector_db.search(..., collection=collection)` のように `collection` パラメータを指定してベクトル検索を呼び出しています。
+しかし、`app/core/vectordb.py` の抽象基底クラス `VectorDB` および `PineconeVectorDB` のメソッド (`search`, `upsert`, `create_index`, `delete`) のシグネチャには `collection` パラメータが定義されておらず、`FAISSVectorDB` のみに独自追加されています。
+この結果、Pinecone など FAISS 以外のベクトル DB 実装を利用した場合に `TypeError: search() got an unexpected keyword argument 'collection'` が発生し、ポリモーフィズムおよび透過性が破壊されています。
+
+**タスク:**
+- [ ] `VectorDB` 抽象基底クラスの `search`, `upsert`, `create_index`, `delete` メソッドのシグネチャに `collection: str = "default"` を追加する
+- [ ] `PineconeVectorDB` にネームスペース/コレクション対応（Pinecone の `namespace` 引数等へのマッピング）を実装し、シグネチャを一致させる
+- [ ] `VectorDB` の抽象インターフェースに準拠するすべての実装に対する単位テストを追加・更新する
