@@ -6,25 +6,26 @@
 # only needs this lightweight, verified set. Keep versions aligned with
 # requirements.txt.
 #
-# Verified: 278 unit tests pass on Python 3.10 with exactly these packages.
+# Verified: 278 unit tests pass on Python 3.10/3.11/3.12 with exactly these packages.
 
 # Web framework
 fastapi==0.109.0
 uvicorn==0.27.0
-python-multipart==0.0.6
+python-multipart==0.0.32
 
 # Validation / config
 pydantic==2.5.0
 pydantic[email]==2.5.0
 pydantic-settings==2.1.0
+email-validator>=2.0.0
 
 # LLM client (mocked in tests, but imported at module load)
 openai==1.10.0
 
 # Retrieval / vector search
 rank-bm25==0.2.2
-faiss-cpu==1.7.4
-numpy>=1.24,<2
+faiss-cpu==1.8.0
+numpy==1.26.4
 
 # Caching / rate limiting / metrics
 redis==5.0.1
@@ -32,7 +33,7 @@ slowapi>=0.1.9
 prometheus-client==0.19.0
 prometheus-fastapi-instrumentator==6.0.0
 tenacity==8.2.3
-httpx==0.26.0
+httpx==0.27.0
 
 # Batch processing (imported by tests/unit/test_batch_tasks.py)
 celery>=5.3.0
@@ -41,3 +42,5 @@ celery>=5.3.0
 pytest==7.4.3
 pytest-asyncio==0.23.2
 pytest-cov==4.1.0
+pytest-mock==3.14.0
+pytest-azurepipelines
