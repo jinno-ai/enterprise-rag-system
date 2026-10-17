@@ -87,3 +87,24 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上とドキュメント管理機能の実装
+
+**タイトル:** 検索精度の向上とドキュメント管理機能の実装
+
+**内容:**
+現在のRAGシステムには、日本語検索精度の不足や、ドキュメント管理機能の不完全さといった課題があります。エンタープライズ利用に耐えうる品質にするため、以下の改善が必要です。
+
+- **日本語対応の強化:** `TextSplitter` および `HybridRetriever` に形態素解析（Janome等）を導入し、日本語の適切な分かち書きをサポートする。
+- **ドキュメントAPIの正規化:** `app/main.py` でマウントされているモックの `ingest` ルーターを、機能的な `documents` ルーターに置き換える。
+- **FAISSの実装補完:** `FAISSVectorDB` におけるメタデータフィルタリングおよび `delete` メソッドを実装する。
+
+**タスク:**
+- [ ] `app/main.py` のルーターを `ingest.router` から `documents.router` に変更する
+- [ ] `TextSplitter` に日本語形態素解析エンジンを組み込む
+- [ ] `HybridRetriever.build_bm25_index` のトークナイズを日本語対応にする
+- [ ] `FAISSVectorDB.search` で `filter_dict` によるフィルタリングを実装する
+- [ ] `FAISSVectorDB.delete` メソッドを実装し、ドキュメントの削除を可能にする
+- [ ] `app/api/routes/documents.py` 内のハードコードされた `db_type="faiss"` を設定値参照に変更する
