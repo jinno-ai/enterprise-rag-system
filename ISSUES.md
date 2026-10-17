@@ -87,3 +87,24 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語サポートの強化 (日本語形態素解析の導入によるBM25とTextSplitterの改善)
+
+**タイトル:** 日本語形態素解析器の導入によるチャンキング・BM25検索精度の向上
+
+**内容:**
+現在、ドキュメントの分割を行う `TextSplitter` （`app/services/document_loader.py`）は半角スペースや改行などの標準文字区切りのみに依存しており、日本語特有の読点（、）や句点（。）、また文字カウントによる適切な文脈維持が困難です。
+さらに、`HybridRetriever.build_bm25_index`（`app/services/retrieval.py`）では、単純な英数字正規表現 `\w+` によるトークン分割を行っているため、日本語の文章が1つの巨大なトークンとして扱われてしまい、キーワード検索（BM25）が実質的に機能していません。
+
+エンタープライズ品質のRAGシステムとして日本語を高度にサポートするため、日本語形態素解析器（Janome、Sudachi、または MeCab）を導入し、以下の点を改善する必要があります。
+
+- **日本語対応TextSplitterの強化:** 句点（。）や改行を考慮しつつ、日本語文字数をベースに文脈の途切れがないセマンティック・チャンキングを行う。
+- **日本語対応BM25トークナイザーの実装:** 形態素解析を用いて日本語テキストを名詞・動詞などの形態素（単語）に正確に分割し、BM25インデックスに渡す。
+
+**タスク:**
+- [ ] `requirements.txt` に日本語形態素解析ライブラリ（例: `janome` または `sudachipy`）を追加する
+- [ ] `app/services/document_loader.py` の `TextSplitter` に日本語文境界分割（。、\n）および文字ベースのオーバーラップ処理をサポートするロジックを実装する
+- [ ] `app/services/retrieval.py` の `HybridRetriever.build_bm25_index` と `keyword_search` において、形態素解析トークナイザーを導入して日本語クエリおよびドキュメントの単語分割に対応させる
+- [ ] 日本語テキストを用いた `TextSplitter` と `HybridRetriever` の単体テストを `tests/unit/` 配下に新規実装・拡張する
