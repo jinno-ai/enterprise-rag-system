@@ -87,3 +87,25 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度の向上（日本語対応・再ランク付け）とAPI統合の完成
+
+**タイトル:** 日本語RAG精度の改善とドキュメントAPIの正規統合
+
+**内容:**
+現在のシステムには、日本語ドキュメントの処理精度と、一部のモック化されたAPIエンドポイントに関する技術的負債があります。エンタープライズ品質のRAGシステムとして完成させるために、以下の改善が必要です。
+
+- **日本語対応:** `TextSplitter` と `BM25` のトークナイズ処理が単純な区切り文字に依存しており、日本語の文脈を正しく扱えません。JanomeやSudachi等の形態素解析器の導入が必要です。
+- **再ランク付け (Reranking):** `Reranker` サービスが実装されていますが、`app/main.py` での初期化と `RAGPipeline` への注入が行われていません。
+- **API統合:** `app/main.py` で依然としてモックの `ingest.router` が使用されており、機能的な `app/api/routes/documents.py` への切り替えが必要です。
+- **VectorDB拡張:** `FAISSVectorDB` におけるメタデータフィルタリングのロジック実装と、`delete` メソッドの実装が必要です。
+
+**タスク:**
+- [ ] `app/services/document_loader.py` に日本語形態素解析ベースのチャンク分割ロジックを追加する
+- [ ] `app/services/retrieval.py` の `build_bm25_index` を日本語トークナイズに対応させる
+- [ ] `app/main.py` で `Reranker` を初期化し、`RAGPipeline` に渡すように修正する
+- [ ] `app/main.py` のルーター登録を `ingest.router` から `documents.router` に変更する
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.search` で `filter_dict` をサポートする
+- [ ] `app/core/vectordb.py` の `FAISSVectorDB.delete` を実装する
