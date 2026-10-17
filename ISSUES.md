@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語サポートの強化 (Japanese Language Support)
+
+**タイトル:** 日本語の形態素解析ツール（Janome/Sudachi等）の統合による文書分割と検索精度の向上
+
+**内容:**
+現在の `TextSplitter` は単純な文字ベースの区切り文字（`\n\n`, `\n`, `. `, ` ` 等）を使用しており、日本語文書の文脈や単語の切れ目を考慮した適切なチャンク分割が困難です。また、`HybridRetriever` の BM25 インデックス作成においても、単純な正規表現トークナイズ（`re.findall(r'\w+', ...)`）が使用されており、日本語のような分かち書きを行わない言語では単語ベースの正確なキーワード検索が機能しません。
+日本語の RAG 精度を劇的に向上させるため、日本語形態素解析エンジン（Janome, Sudachi, あるいは MeCab等）を統合し、日本語特有の文章構造に適合したテキスト分割および適切なトークナイズをサポートする必要があります。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリ（`janome` や `sudachi` 等）を `requirements.txt` に追加する
+- [ ] `app/services/document_loader.py` 内の `TextSplitter` を拡張、または日本語専用の `JapaneseTextSplitter` を実装し、形態素情報を利用した文脈保持型チャンキングに対応させる
+- [ ] `app/services/retrieval.py` 内の `HybridRetriever.build_bm25_index` において、日本語の助詞や助動詞等のストップワードを除去し、形態素トークンを用いた正確な分かち書きインデックスを作成できるように改善する
+- [ ] 日本語のテスト用ドキュメントとクエリを用いた、日本語対応の機能検証用テストを `tests/` に作成する
