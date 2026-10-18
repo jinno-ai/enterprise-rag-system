@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 7: Re-ranking (Cross-Encoder) の検索・RAGパイプライン統合
+
+**タイトル:** Cross-Encoder Re-ranker の検索・RAGパイプラインへの統合と設定追加
+
+**内容:**
+現在 `app/services/reranker.py` に `Reranker` クラス（Cross-Encoder によるスコアリング・リロジック）が実装されていますが、メインの検索フロー (`HybridRetriever` や `RAGPipeline`) にはまだ統合されていません。
+Epic 2 (Story 2.3: Re-rankingと回答生成の最適化) の要件を満たし、検索結果の適合率および回答生成の精度 (Faithfulness / Precision) を向上させるため、Reranker を検索・RAG パイプラインに統合し、設定により有効化・制御できるようにする必要があります。
+
+**タスク:**
+- [ ] `HybridRetriever` または `RAGPipeline` において、`Reranker` オプションを追加し、取得した候補チャンクに対して Cross-Encoder による再スコアリングを実行する統合ロジックを実装
+- [ ] `app/core/config.py` (`Settings`) に Re-ranking のオン/オフフラグ (`ENABLE_RERANKER`) および利用モデル・top_k 制限の設定項目を追加
+- [ ] Reranker 統合後の単体・結合テスト (`tests/unit/test_reranker.py` や `tests/integration/`) を作成・拡充
