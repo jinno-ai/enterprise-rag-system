@@ -87,3 +87,23 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入とVectorDBインターフェースの共通化
+
+**タイトル:** 日本語形態素解析（Janome/Sudachi）の導入とVectorDB検索インターフェースの不整合解消
+
+**内容:**
+Story 2.2（ハイブリッド検索エンジンの実装）に基づき、日本語ドキュメントに対するBM25検索精度の向上と、マルチベクターDB（FAISS / Pinecone等）抽象化レイヤーのシグネチャ不整合を修正します。
+
+1. **日本語形態素解析の導入:**
+   現在 `app/services/retrieval.py` 内の `HybridRetriever.build_bm25_index` および `keyword_search` で使用されている簡易正規表現 (`re.findall(r'\w+', doc)`) は、日本語等のスペース区切りのない言語で適切な単語分割が行われません。Janome または SudachiPy 等の形態素解析ライブラリを導入し、適切な分かち書きトークナイズを実装する必要があります。
+
+2. **VectorDB インターフェースの統一:**
+   `VectorDB` 抽象クラスおよび `PineconeVectorDB` クラスの `search` メソッドにおいて、`collection` パラメータが未定義です。一方、`HybridRetriever.search` や `RAGPipeline.query` からは `collection` 引数が渡されるため、Pinecone等を使用する際に `TypeError` が発生します。基底クラスおよび全実装で `collection: str = "default"` パラメータを統一する必要があります。
+
+**タスク:**
+- [ ] `Janome` または `SudachiPy` を依存関係に追加し、`HybridRetriever` の BM25 トークナイザとして統合する
+- [ ] `VectorDB` 基底クラスおよび `PineconeVectorDB` の `search` メソッドに `collection` 引数を追加する
+- [ ] 日本語テキストに対する BM25 検索と Pinecone 検索の単体テストを追加する
