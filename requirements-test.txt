@@ -17,6 +17,7 @@ python-multipart==0.0.6
 pydantic==2.5.0
 pydantic[email]==2.5.0
 pydantic-settings==2.1.0
+cryptography>=41.0.0
 
 # LLM client (mocked in tests, but imported at module load)
 openai==1.10.0
