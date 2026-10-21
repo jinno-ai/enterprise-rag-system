@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入とVectorDBインターフェースの不整合解消
+
+**タイトル:** 日本語テキストのBM25トークナイズ改善とVectorDB検索シグネチャの統一
+
+**内容:**
+現在、`HybridRetriever.build_bm25_index` および `keyword_search` では `re.findall(r'\w+', text)` による単純な正規表現トークナイズが行われており、形態素境界のない日本語ドキュメントにおいて検索精度が低下する課題があります。JanomeまたはSudachi等を用いた形態素解析を導入する必要があります。
+また、`VectorDB` 抽象クラスおよび `PineconeVectorDB` の `search` メソッドのシグネチャに `collection` 引数が含まれておらず、`HybridRetriever` から呼び出した際に `TypeError` が発生するインターフェース不整合が存在します。
+
+**タスク:**
+- [ ] 日本語対応のトークナイザー（Janome / Sudachi等）を `HybridRetriever` のBM25インデックス構築・検索に導入する
+- [ ] `VectorDB` 抽象基底クラスおよび `PineconeVectorDB` の `search` メソッドに `collection` パラメータを追加し、インターフェースを統一する
+- [ ] 関連する単体テストおよび統合テストを追加・更新する
