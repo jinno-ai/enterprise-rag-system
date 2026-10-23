@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 検索精度向上のための Cross-Encoder Reranker の完全統合
+
+**タイトル:** Cross-Encoder Reranker の RAG パイプラインおよび API エンドポイントへの完全統合
+
+**内容:**
+`app/services/reranker.py` に CrossEncoder を利用したリファインメント処理 `Reranker` クラスが実装されていますが、現行の API ルート（例: `app/api/routes/query.py`）やアプリケーションの依存性注入 (DI) 初期化フローでは `Reranker` のデフォルト有効化・設定連携が不十分です。ハルシネーションの低減および検索精度の更なる向上のため、RAG パイプライン全体で Cross-Encoder Reranker をシームレスに適用・切替可能にする必要があります。
+
+**タスク:**
+- [ ] `app/main.py` または DI コンテナ内で `Reranker` を初期化し、`RAGPipeline` へ注入する仕組みを整備する
+- [ ] API リクエストパラメータ（`rerank: bool`）および設定ファイル (`config.py`) で Reranker の利用フラグ・モデル名を制御可能にする
+- [ ] Reranker 適用時の候補ドキュメント取得件数のチューニングを行う
+- [ ] Reranker 連携に関する単体テストおよび結合テストを追加・更新する
