@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: ハイブリッド検索 (BM25) における日本語形態素解析の導入と VectorDB インターフェースの整合性確保
+
+**タイトル:** 日本語テキストの形態素解析による BM25 トークナイズ精度向上および VectorDB 検索シグネチャの統一
+
+**内容:**
+現在 `HybridRetriever.build_bm25_index` および `keyword_search` では、正規表現 `re.findall(r'\w+', doc.content.lower())` による単純なトークナイズを行っています。日本語の文章では単語間にスペースが存在しないため、現行の実装では文章全体が1つのトークンになったり、意図通りに分割されずキーワード検索の適合率 (Precision) と再現率 (Recall) が大幅に低下する問題があります。
+また、`HybridRetriever.search` や `semantic_search` では `collection` パラメータを `VectorDB.search` に渡していますが、`VectorDB` 抽象基底クラスおよび `PineconeVectorDB` の `search` メソッドのシグネチャに `collection: str = "default"` が含まれておらず、`TypeError` が発生する潜在的な不整合が存在します。
+
+**タスク:**
+- [ ] 日本語形態素解析ライブラリ（Janome または SudachiPy）を用いたトークナイザーを `app/services/retrieval.py` に導入する
+- [ ] `VectorDB` 抽象基底クラスおよび `PineconeVectorDB` クラスの `search` メソッドのシグネチャに `collection: str = "default"` パラメータを追加する
+- [ ] 日本語クエリおよびドキュメントに対する BM25 ハイブリッド検索の単体テストを追加・拡充する
