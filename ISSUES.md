@@ -87,3 +87,17 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 7: ドキュメント管理APIにおけるハードコードされたVectorDB設定の解消
+
+**タイトル:** `app/api/routes/documents.py` 内のVectorDB構成オプションの設定値参照化
+
+**内容:**
+`app/api/routes/documents.py` 内のエンドポイント（`ingest_documents`, `upload_document`, `get_stats`）において、VectorDBの取得処理時に `get_vector_db(db_type="faiss", index_path="./data/faiss_index.bin")` とハードコードされた引数が使用されています。これにより、環境変数や `app/core/config.py` (Settings) で指定された `vector_db_type` や `faiss_index_path` の設定が無視されてしまいます。設定ファイル経由で柔軟に切り替えられるよう修正が必要です。
+
+**タスク:**
+- [ ] `app/api/routes/documents.py` で `get_settings()` を使用して `settings.vector_db_type` および `settings.faiss_index_path` を取得するように変更する
+- [ ] `get_vector_db` 呼び出し箇所でハードコードされた引数を設定値に置換する
+- [ ] 関連するAPIおよびドキュメントインジェストのテストを追加・更新する
