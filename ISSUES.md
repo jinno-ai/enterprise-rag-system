@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 8: PII (個人識別情報) 検出・マスキング機能のパイプライン統合
+
+**タイトル:** PII (個人識別情報) 検出・マスキング機能の RAG パイプラインおよびロギングへの統合
+
+**内容:**
+現在 `app/core/pii.py` に `PIIDetector` モジュールが実装されていますが、RAGパイプラインのリクエスト処理やドキュメントインジェスト、ロギング等のメインフローに統合されていません。外部LLMサービスへの個人情報送信やログへの機密情報記録を防ぐため、`PIIDetector` をパイプラインに組み込み、自動マスキング機能を有効化する必要があります。
+
+**タスク:**
+- [ ] `config.py` に PII 検出・マスキングの有効化フラグ (`ENABLE_PII_REDACTION`) を追加する
+- [ ] `RAGPipeline` (`app/services/rag_pipeline.py`) のクエリ受信時およびプロンプト構築時に `PIIDetector` によるマスキングを適用する
+- [ ] ドキュメントインジェスト処理 (`app/services/document_processor.py` / `document_loader.py`) へのマスキング処理の統合を行う
+- [ ] ログ出力時の PII 自動マスキング機能を組み込む
+- [ ] 関連する単体テストおよび結合テストを追加する
