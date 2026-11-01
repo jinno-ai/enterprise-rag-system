@@ -87,3 +87,18 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析によるBM25キーワード検索精度の向上およびVectorDBインターフェース不整合の解消
+
+**タイトル:** 日本語検索 (BM25) 対応と VectorDB パラメータ不整合の修正
+
+**内容:**
+現在 `HybridRetriever` の BM25 インデックス作成において、`re.findall(r'\w+', doc.content.lower())` による単語区切りトークナイズが行われており、分かち書きが存在しない日本語テキストで単語の抽出ができずキーワード検索（BM25）が正常に機能しません。
+また、`HybridRetriever.semantic_search` では `VectorDB.search` の呼び出し時に `collection` パラメータを渡していますが、抽象基底クラス `VectorDB` および `PineconeVectorDB` の `search` メソッドのシグネチャに `collection` パラメータが存在しないため、`PineconeVectorDB` 使用時に `TypeError` が発生する不具合が存在します。
+
+**タスク:**
+- [ ] `VectorDB` 抽象基底クラスおよび `PineconeVectorDB` の `search` メソッドに `collection: str = "default"` パラメータを追加し、インターフェースの不整合を解消する
+- [ ] `HybridRetriever` の BM25 トークナイズ処理において、日本語形態素解析エンジン（Janome/Sudachi等）または日本語文字種境界対応トークナイザを導入し、日本語キーワード検索の精度を向上させる
+- [ ] 関連する単体テスト（`tests/unit/test_retrieval.py` および `tests/unit/test_vectordb.py`）を更新・拡充する
