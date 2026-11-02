@@ -87,3 +87,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Re-ranking（Cross-Encoder）機能の検索・回答生成パイプラインへの統合
+
+**タイトル:** `Reranker` サービスの `HybridRetriever` および `RAGPipeline` への統合と検索精度向上
+
+**内容:**
+現在 `app/services/reranker.py` に Cross-Encoder ベースの `Reranker` クラスが実装されていますが、`HybridRetriever` や `RAGPipeline` のコンテキスト検索・回答生成フロー（`retrieve` / `_rerank_and_truncate` / `generate_response`）に組み込まれておらず、機能が未統合のままになっています。
+`EPIC_PLANNING.md` の Story 2.3（Re-rankingと回答生成の最適化）に基づき、Cross-Encoder による再ランキング処理を検索・コンテキスト圧縮パイプラインに統合し、検索結果の精度（ハルシネーションの抑制および回答品質）を向上させる必要があります。
+
+**タスク:**
+- [ ] `config.py` に Re-ranking 有効化フラグ (`ENABLE_RERANKING`) およびモデル設定を追加する
+- [ ] `HybridRetriever` または `ContextCompressor` に `Reranker` を統合し、検索時に選択的に Cross-Encoder による再ランキングを実行可能にする
+- [ ] `RAGPipeline.generate_response` 内のコンテキスト選択フローで Re-ranking を適用する
+- [ ] Re-ranking 統合動作を検証する単体テストおよび結合テスト (`tests/unit/test_reranker.py`, `tests/unit/test_retrieval.py` 等) を追加・更新する
