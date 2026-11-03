@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: クロスエンコーダー（Reranker）サービスの HybridRetriever / RAGPipeline への統合
+
+**タイトル:** Cross-Encoder Reranker の RAG パイプライン統合による検索適合率向上
+
+**内容:**
+`EPIC_PLANNING.md` の Story 2.3（Re-rankingと回答生成の最適化）において、検索結果上位の精度向上およびハルシネーション抑制のため Cross-Encoder 等を用いたリランキング処理が求められています。現在 `app/services/reranker.py` に `Reranker` クラスが実装されており単体テストも存在しますが、`app/main.py` のライフスパン初期化や `HybridRetriever`、`RAGPipeline` のクエリ実行パスに統合されておらず、未活用の状態です。
+
+本課題では、`Reranker` サービスを RAG パイプラインに組み込み、ハイブリッド検索で取得した候補文書の再順序付け（リランキング）を行えるよう統合します。
+
+**タスク:**
+- [ ] `app/core/config.py` に Reranker 有効化フラグ（`reranker_enabled: bool = False`）およびモデル名設定を追加する
+- [ ] `app/main.py` の `lifespan` 内で設定に応じて `Reranker` を初期化し、`HybridRetriever` または `RAGPipeline` に注入する
+- [ ] `HybridRetriever` または `RAGPipeline` にリランキング処理を組み込み、上位ドキュメントの再順序付けを可能にする
+- [ ] リランキングが有効な場合と無効な場合の両方について単体テストおよび結合テストを追加する
