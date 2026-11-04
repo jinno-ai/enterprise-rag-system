@@ -26,6 +26,9 @@ rank-bm25==0.2.2
 faiss-cpu==1.7.4
 numpy>=1.24,<2
 
+# Encryption (used in app/core/encryption.py and tests/unit/test_feature_49.py)
+cryptography>=41.0.0
+
 # Caching / rate limiting / metrics
 redis==5.0.1
 slowapi>=0.1.9

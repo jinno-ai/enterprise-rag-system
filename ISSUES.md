@@ -87,3 +87,21 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析によるBM25キーワード検索精度の向上およびVectorDBインターフェース整合
+
+**タイトル:** 日本語形態素解析によるBM25キーワード検索精度の向上およびVectorDBシグネチャの整合化
+
+**内容:**
+現在、`HybridRetriever` の BM25 キーワード検索 (`build_bm25_index` および `keyword_search`) では `re.findall(r'\w+', text.lower())` による簡易な正規表現トークナイズが行われています。この実装では、スペース区切りを持たない日本語テキストにおいて単語が適切に分かち書きされず、助詞や助動詞を含んだ長文が単一トークンと判定されたり、キーワード検索の適合率・再現率が著しく低下します。
+EPIC 2 (Story 2.2: ハイブリッド検索エンジンの実装) の品質目標を満たすため、形態素解析ツール（SudachiPy や Janome など）を用いた形態素解析トークナイザーを導入し、言語に応じたトークン化を行えるようにする必要があります。
+
+また、`VectorDB` 抽象基底クラス (`app/core/vectordb.py`) および `PineconeVectorDB.search` のメソッドシグネチャには `collection` 引数が定義されていないのに対し、`HybridRetriever.semantic_search` (`app/services/retrieval.py`) から `collection` パラメータが渡されています。このインターフェースの不整合により、Pinecone などの別実装を接続した際に `TypeError` が発生する潜在的なリスクがあるため、基底クラスおよび全VectorDB実装でシグネチャを整合化する必要があります。
+
+**タスク:**
+- [ ] `app/services/retrieval.py` のトークン分割処理において、日本語形態素解析トークナイザー（SudachiPy / Janome等）のサポートを追加する
+- [ ] ドキュメント言語判定または設定パラメータに基づき、日本語と他言語でトークナイザーを適切に切り替えられるようにする
+- [ ] `VectorDB` 基底クラスおよび `PineconeVectorDB` の `search` メソッドに `collection: Optional[str] = "default"` パラメータを追加し、インターフェースの整合性を担保する
+- [ ] 日本語テキストに対するBM25インデックス生成・検索テストおよびVectorDBのシグネチャ整合テストを追加する
