@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: RAGPipelineにおけるCross-Encoder Rerankerの初期化および設定統合
+
+**タイトル:** `app/main.py`におけるRerankerの初期化漏れの解消と設定連動
+
+**内容:**
+`app/services/reranker.py`にCross-Encoderベースの再ランキングサービス（`Reranker`）が実装されており、`RAGPipeline.query(..., rerank=True)`で再ランキングをサポートしていますが、`app/main.py`の`lifespan`内で`Reranker`が初期化されず`RAGPipeline`へ渡されていません。
+そのため、本番環境でユーザーが`rerank=True`を指定しても再ランキングが実行されずフォールバックされます。
+また、環境変数によるRe-ranking機能の有効化/無効化フラグ（`ENABLE_RERANKER`）の設定管理が不十分です。
+
+**タスク:**
+- [ ] `app/core/config.py` に `enable_reranker` (環境変数 `ENABLE_RERANKER`) 設定を追加する
+- [ ] `app/main.py` の `lifespan` で `settings.enable_reranker` に応じて `Reranker` インスタンスを生成し、`RAGPipeline` 初期化時に渡す
+- [ ] モデルロード失敗時や `sentence-transformers` 未インストール環境時の安全なフォールバック処理を実装する
+- [ ] `app/main.py` 経由で初期化された `RAGPipeline` が `Reranker` を正しく保持・使用することを検証するテストを作成する
