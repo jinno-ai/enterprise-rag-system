@@ -87,3 +87,22 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: RerankerサービスのRAGパイプラインおよびlifespan統合
+
+**タイトル:** `Reranker` サービスの `lifespan` 初期化と `RAGPipeline` への統合
+
+**内容:**
+現在 `app/services/reranker.py` には Cross-Encoder を用いた `Reranker` クラスが実装されており、`RAGPipeline` 側でも `reranker` 引数を受け取ってリランキングを実行するロジック (`RAGPipeline.query(..., rerank=True)`) が備わっています。
+
+しかしながら、`app/main.py` の `lifespan` 内で `RAGPipeline` をインスタンス化する際、`Reranker` が初期化されておらず、パイプラインに渡されていません（`reranker` パラメータがデフォルトの `None` のまま）。このため、クライアントが `rerank=True` を指定しても実際には Cross-Encoder による再ランク付けが行われず、Epic 2（検索・RAG精度の高度化 - Story 2.3）の機能が本番稼働時に有効化されていません。
+
+また、`app/services/retrieval.py` 内の `ContextCompressor._rerank_and_truncate` にも `# TODO: Implement cross-encoder re-ranking` のプレースホルダーが残されています。
+
+**タスク:**
+- [ ] `app/core/config.py` に Reranker 関連の設定（モデル名、有効化フラグ等）を追加・確認する
+- [ ] `app/main.py` の `lifespan` コンテキストマネージャ内で `Reranker` インスタンスを（設定に応じて）生成し、`RAGPipeline` のコンストラクタに渡すよう改修する
+- [ ] `app/services/retrieval.py` の `ContextCompressor._rerank_and_truncate` メソッドを更新し、`Reranker` を活用したコンテキスト圧縮に対応させる
+- [ ] アプリケーション初期化時および `/api/v1/query/` にて `rerank=True` を指定した結合テスト／単体テストを追加・拡充する
