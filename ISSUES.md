@@ -85,5 +85,19 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 `app/main.py` で `_rag_pipeline` というグローバル変数が使用されています。これはテスト時のモック化を困難にし、アプリケーションのステート管理を複雑にします。FastAPIのDependency Injectionシステムを活用すべきです。
 
 **タスク:**
-- [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
-- [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+- [ ] `get_rag_pipeline` を Depends で使用できる形にリファクタリングする
+- [ ] グローバル変数を廃止し、lifespan 内で初期化したインスタンスを適切に管理する (例: request.state やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: 日本語形態素解析の導入とVectorDB検索インターフェースの整合性向上
+
+**タイトル:** 日本語形態素解析 (Janome/Sudachi) の導入と VectorDB 検索インターフェースの整合性確保
+
+**内容:**
+現在、`HybridRetriever` の BM25 インデックス生成 (`build_bm25_index`) および検索 (`keyword_search`) では、正規表現 (`re.findall(r'\w+', ...)`) による単語分割が使用されています。この方式では日本語テキストが適切に分かち書きされず、キーワード検索の精度が著しく低下します。また、`VectorDB` 抽象基底クラスおよび一部のサブクラス（`PineconeVectorDB` 等）の `search` メソッドのシグネチャに `collection` パラメータが含まれておらず、`HybridRetriever` からの呼び出し時に `TypeError` が発生するリスクがあります。
+
+**タスク:**
+- [ ] `HybridRetriever` に日本語形態素解析ライブラリ (Janome または SudachiPy) を導入し、日本語テキストに対応したトークナイズ処理を実装する
+- [ ] `VectorDB` 基底クラスおよび `PineconeVectorDB` 等の全具象クラスの `search` メソッドのシグネチャに `collection: str = "default"` を統一的に追加する
+- [ ] 形態素解析とコレクションパラメータ対応に関するユニットテストを追加・更新する
