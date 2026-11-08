@@ -87,3 +87,22 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Cross-Encoder Reranker の RAGPipeline への統合およびライフサイクル初期化
+
+**タイトル:** Cross-Encoder Reranker の RAGPipeline 統合とアプリケーション起動時初期化の実装
+
+**内容:**
+`EPIC_PLANNING.md` の Story 2.3（Re-rankingと回答生成の最適化）において、検索精度向上のための Cross-Encoder による再ランキング機能が計画されています。
+現在、`app/services/reranker.py` に `Reranker` クラスが実装されており、`RAGPipeline.query` 内にも `reranker` 引数を受け取って上位候補（Top 50）を再ランク付けするロジック（`self.reranker.rerank_results(...)`）が用意されています。
+
+しかし、アプリケーションのエントリーポイントである `app/main.py` の `lifespan` 内で `Reranker` がインスタンス化されておらず、`RAGPipeline` 初期化時に渡されていないため、実際の API 実行環境では Re-ranking が適用されずバイパスされています。
+また、リランカーの有効/無効フラグや使用モデル名を環境変数および `app/core/config.py` から安全に設定できるようにし、オプショナルな依存関係として `sentence-transformers` が未インストールの環境でもグレースフルにフォールバックする仕組みを整える必要があります。
+
+**タスク:**
+- [ ] `app/core/config.py` に Reranker 関連の設定（`reranker_enabled: bool`, `reranker_model: str`, `reranker_top_k: int` 等）を追加する
+- [ ] `app/main.py` の `lifespan` ハンドラ内で、設定に基づいて `Reranker` インスタンスを安全に初期化し、`RAGPipeline` に注入する
+- [ ] `sentence-transformers` が利用できない環境やモデル読み込み失敗時にエラーでアプリが落ちないよう、フォールバックおよび警告ログ出力を整備する
+- [ ] `RAGPipeline` と `Reranker` の結合テストおよび API エンドポイント（`/api/v1/query`）経由での Rerank 動作検証テストを追加する
