@@ -87,3 +87,20 @@ FastAPIの `async def` エンドポイント内で、同期的な `openai.chat.c
 **タスク:**
 - [ ] `get_rag_pipeline` を `Depends` で使用できる形にリファクタリングする
 - [ ] グローバル変数を廃止し、`lifespan` 内で初期化したインスタンスを適切に管理する (例: `request.state` やシングルトンプロバイダの使用)
+
+---
+
+## Issue 6: Rerankerサービスのライフサイクル管理およびRAGPipelineへの統合
+
+**タイトル:** `Reranker` サービスのアプリケーション起動時初期化と `RAGPipeline` への統合
+
+**内容:**
+現在、`app/services/reranker.py` に Cross-encoder ベースの `Reranker` クラスが実装されており、`app/core/config.py` にも `reranker_model` 設定が存在します。また、`RAGPipeline.query` メソッドにはリランキングを実行するロジック（`rerank=True` かつ `self.reranker` が存在する場合）が実装されています。
+
+しかし、`app/main.py` の `lifespan` スタートアップ処理では `Reranker` インスタンスが初期化されておらず、`RAGPipeline` 初期化時にも渡されていないため、実際のAPIリクエスト時にリランキング処理がスキップされてしまいます。Epic 2 (Story 2.3) の目標である「Re-rankingと回答生成の最適化」を達成するため、`Reranker` のライフサイクル管理および統合を実装する必要があります。
+
+**タスク:**
+- [ ] `app/core/config.py` にリランキングの有効/無効を切り替えるフラグ（例: `enable_reranker: bool`）を追加・確認する
+- [ ] `app/main.py` の `lifespan` 内で `Reranker` を初期化し、`app.state.reranker` および `RAGPipeline` に注入する
+- [ ] Cross-encoder モデル読み込み時の例外ハンドリングやウォームアップ処理を整備する
+- [ ] リランキング機能が本番・統合環境で正しく機能することを検証する結合テスト・単体テストを追加する
