@@ -7,7 +7,7 @@
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
-**Production-grade Retrieval-Augmented Generation pipeline for enterprise knowledge bases**
+**Retrieval-Augmented Generation pipeline for enterprise knowledge bases**
 
 [Features](#-features) • [Demo](#-demo) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
@@ -24,7 +24,7 @@ Modern enterprises face critical challenges in knowledge management:
 - ⚡ Latency and accuracy requirements for production deployments
 - 💰 Cost optimization for large-scale document processing
 
-**This RAG system solves these problems with a production-ready, scalable architecture.**
+**This RAG system is an implementation exploring that space — FastAPI + vector search + async ingestion, with tests.**
 
 ---
 
@@ -91,16 +91,13 @@ Modern enterprises face critical challenges in knowledge management:
 
 ## 🎥 Demo
 
-### Web Interface (Streamlit)
-![Demo GIF](docs/images/demo.gif)
-
 ### API Usage
 
 #### API Versioning
 
 The Enterprise RAG System supports API versioning to ensure backward compatibility while enabling new features:
 
-- **v1 API** (`/api/v1/*`): Stable, production-ready API with full backward compatibility
+- **v1 API** (`/api/v1/*`): Stable API with backward compatibility
 - **v2 API** (`/api/v2/*`): Enhanced API with additional features (query IDs, timestamps, metadata)
 
 #### v1 API Example
@@ -2950,9 +2947,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Jinno** - AI Engineer specializing in LLM applications
 
 - 🐦 Twitter: [@jinno_ai](https://twitter.com/jinno_ai)
-- 💼 LinkedIn: [jinno-ai](https://linkedin.com/in/jinno-ai)
-- 📧 Email: contact@jinno-ai.dev
-- 🌐 Portfolio: [jinno-ai.dev](https://jinno-ai.dev)
 
 ---
 
